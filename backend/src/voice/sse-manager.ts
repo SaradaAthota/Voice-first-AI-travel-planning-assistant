@@ -50,6 +50,7 @@ export function setupSSEConnection(
     sseClients.set(sessionId, new Set());
   }
   sseClients.get(sessionId)!.add(client);
+  console.log(`SSE client connected for session: ${sessionId}. Total clients: ${sseClients.get(sessionId)!.size}`);
 
   // Send initial connection message
   sendSSEMessage(client, {
@@ -65,6 +66,12 @@ export function setupSSEConnection(
 
   // Handle client disconnect
   response.on('close', () => {
+    console.log(`SSE client disconnected for session: ${sessionId}`);
+    removeSSEClient(sessionId, client);
+  });
+
+  response.on('error', (err) => {
+    console.error(`SSE client error for session: ${sessionId}`, err);
     removeSSEClient(sessionId, client);
   });
 }
@@ -74,17 +81,29 @@ export function setupSSEConnection(
  */
 export function broadcastTranscriptUpdate(update: TranscriptUpdate): void {
   const clients = sseClients.get(update.sessionId);
-  if (!clients) {
+  if (!clients || clients.size === 0) {
+    console.warn(`No SSE clients connected for session: ${update.sessionId}`);
+    console.warn(`Available sessions:`, Array.from(sseClients.keys()));
     return; // No clients connected
   }
 
-  for (const client of clients) {
+  console.log(`Broadcasting to ${clients.size} SSE client(s) for session: ${update.sessionId}`);
+  const clientsArray = Array.from(clients); // Convert to array to avoid iteration issues
+  for (const client of clientsArray) {
     try {
+      // Check if response is still writable
+      if (client.response.writableEnded || client.response.destroyed) {
+        console.warn('SSE client response already closed, removing client');
+        removeSSEClient(update.sessionId, client);
+        continue;
+      }
+      
       sendSSEMessage(client, {
         type: 'transcript',
         data: update,
       });
       client.lastChunkIndex = update.chunkIndex;
+      console.log(`SSE message sent to client. Text length: ${update.text.length}, text: "${update.text.substring(0, 50)}"`);
     } catch (error) {
       console.error('Error sending SSE message:', error);
       // Remove failed client
@@ -125,20 +144,29 @@ function removeSSEClient(sessionId: string, client: SSEClient): void {
 export function sendCompletionMessage(sessionId: string): void {
   const clients = sseClients.get(sessionId);
   if (!clients) {
+    console.warn(`No SSE clients found for completion message: ${sessionId}`);
     return;
   }
 
-  for (const client of clients) {
+  console.log(`Sending completion message to ${clients.size} client(s) for session: ${sessionId}`);
+  const clientsArray = Array.from(clients);
+  for (const client of clientsArray) {
     try {
       sendSSEMessage(client, {
         type: 'complete',
         data: { complete: true },
       });
-      client.response.end();
+      // Close the connection after a short delay to allow final messages
+      setTimeout(() => {
+        if (!client.response.writableEnded && !client.response.destroyed) {
+          client.response.end();
+        }
+        removeSSEClient(sessionId, client);
+      }, 100);
     } catch (error) {
       console.error('Error sending completion message:', error);
+      removeSSEClient(sessionId, client);
     }
-    removeSSEClient(sessionId, client);
   }
 }
 

@@ -128,8 +128,76 @@ export class ToolOrchestrator {
         }
         break;
 
+      case ConversationState.INIT:
+      case ConversationState.COLLECTING_PREFS:
+        const hasCityAndDuration = context.preferences.city && context.preferences.duration;
+        
+        // If user confirms/finalizes and we have enough info, generate itinerary
+        if (intent === UserIntent.CONFIRM && hasCityAndDuration) {
+          // User wants to finalize - generate itinerary immediately
+          decisions.push({
+            shouldCall: true,
+            toolName: 'poi_search',
+            toolInput: {
+              city: context.preferences.city,
+              interests: context.preferences.interests || [],
+              constraints: context.preferences.constraints || [],
+            },
+            reason: 'User wants to finalize, need to search for POIs',
+          });
+
+          decisions.push({
+            shouldCall: true,
+            toolName: 'itinerary_builder',
+            toolInput: {
+              city: context.preferences.city,
+              duration: context.preferences.duration,
+              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+              pace: context.preferences.pace || 'moderate',
+            },
+            reason: 'User wants to finalize, build itinerary',
+          });
+        } else if (
+          (hasCityAndDuration && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) ||
+          intent === UserIntent.PLAN_TRIP
+        ) {
+          // If we have enough info (city + duration) and intent is PLAN_TRIP, generate itinerary directly
+          // Call POI Search first
+          decisions.push({
+            shouldCall: true,
+            toolName: 'poi_search',
+            toolInput: {
+              city: context.preferences.city,
+              interests: context.preferences.interests || [],
+              constraints: context.preferences.constraints || [],
+            },
+            reason: 'Have city and duration, searching for POIs',
+          });
+
+          // Then call Itinerary Builder (will be executed after POI search completes)
+          decisions.push({
+            shouldCall: true,
+            toolName: 'itinerary_builder',
+            toolInput: {
+              tripId: context.tripId,
+              city: context.preferences.city,
+              duration: context.preferences.duration,
+              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+              pace: context.preferences.pace || 'moderate',
+            },
+            reason: 'After POI search, build itinerary with available preferences',
+          });
+        } else {
+          // Not enough info yet, continue collecting
+          decisions.push({
+            shouldCall: false,
+            reason: `State ${context.state} - need more information (city: ${context.preferences.city}, duration: ${context.preferences.duration})`,
+          });
+        }
+        break;
+
       default:
-        // INIT and COLLECTING_PREFS don't need tools yet
+        // Other states don't need tools
         decisions.push({
           shouldCall: false,
           reason: `State ${context.state} does not require tool calls`,
@@ -150,6 +218,7 @@ export class ToolOrchestrator {
     context: ConversationContext
   ): Promise<ToolOrchestrationResult> {
     const toolCalls: ToolCallResult[] = [];
+    let poiSearchResults: any = null;
 
     for (const decision of decisions) {
       if (!decision.shouldCall || !decision.toolName) {
@@ -162,14 +231,28 @@ export class ToolOrchestrator {
         continue;
       }
 
+      // Prepare tool input - if itinerary_builder, add POIs from previous POI search
+      let toolInput = decision.toolInput || {};
+      if (decision.toolName === 'itinerary_builder' && poiSearchResults) {
+        toolInput = {
+          ...toolInput,
+          pois: poiSearchResults,
+        };
+      }
+
       // Execute tool with logging
       const result = await this.executeWithLogging(
         tool,
-        decision.toolInput || {},
+        toolInput,
         context.tripId
       );
 
       toolCalls.push(result);
+
+      // Store POI search results for itinerary builder
+      if (decision.toolName === 'poi_search' && result.output.success && result.output.data) {
+        poiSearchResults = result.output.data;
+      }
     }
 
     // Determine if LLM processing is needed after tool calls

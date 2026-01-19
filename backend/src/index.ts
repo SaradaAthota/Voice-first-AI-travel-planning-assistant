@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config/env';
 import { closeConnections } from './db/supabase';
 import voiceRoutes from './routes/voice';
+import chatRoutes from './routes/chat';
 import explanationRoutes from './routes/explanations';
 import evaluationRoutes from './routes/evaluations';
 import tripRoutes from './routes/trips';
@@ -35,6 +36,9 @@ app.get('/api', (req: Request, res: Response) => {
 
 // Voice routes
 app.use('/api/voice', voiceRoutes);
+
+// Chat routes (message processing)
+app.use('/api/chat', chatRoutes);
 
 // Explanation routes
 app.use('/api/explanations', explanationRoutes);

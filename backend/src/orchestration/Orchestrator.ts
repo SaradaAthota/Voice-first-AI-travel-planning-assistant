@@ -26,6 +26,7 @@ import {
   OrchestratorOutput,
   ConversationContext,
   ConversationState,
+  UserIntent,
 } from './types';
 import { ConversationStateManager } from './ConversationStateManager';
 import { IntentRouter } from './IntentRouter';
@@ -61,25 +62,47 @@ export class Orchestrator {
    * This is the MAIN method called by the API endpoint.
    */
   async process(input: OrchestratorInput): Promise<OrchestratorOutput> {
+    console.log('=== ORCHESTRATOR PROCESS START ===');
+    console.log('Input:', input);
+    
     // Step 1: Load or create conversation context
     let context: ConversationContext;
-    if (input.tripId) {
+    
+    // Check if this is a simple greeting - if so, always create new context
+    const isSimpleGreeting = /^(hi|hello|hey|how are you|how's it going)[\s!?.,]*$/i.test(input.message.trim());
+    
+    if (input.tripId && !isSimpleGreeting) {
+      console.log('Loading existing context for tripId:', input.tripId);
       const loaded = await this.stateManager.loadContext(input.tripId);
       if (!loaded) {
-        throw new Error(`Trip ${input.tripId} not found`);
+        console.log('Context not found, creating new one');
+        context = await this.stateManager.createContext();
+      } else {
+        context = loaded;
       }
-      context = loaded;
     } else {
-      // New conversation - create context
+      // New conversation or simple greeting - create fresh context
+      if (isSimpleGreeting) {
+        console.log('Simple greeting detected, creating fresh context');
+      } else {
+        console.log('Creating new context...');
+      }
       context = await this.stateManager.createContext();
+      console.log('Context created. tripId:', context.tripId);
     }
 
     // Step 2: Route user intent
     // LLM is used HERE for intent classification (single LLM agent)
+    console.log('Classifying intent...');
     const intentClassification = await this.intentRouter.classifyIntent(
       input.message,
       context
     );
+    console.log('Intent classified:', {
+      intent: intentClassification.intent,
+      confidence: intentClassification.confidence,
+      entities: intentClassification.entities,
+    });
 
     // Update context with extracted entities
     if (intentClassification.entities) {
@@ -90,10 +113,16 @@ export class Orchestrator {
     }
 
     // Step 3: Decide tool calls (ORCHESTRATOR decides, not LLM)
+    console.log('Deciding tool calls...');
     const toolDecisions = this.toolOrchestrator.decideToolCalls(
       context,
       intentClassification.intent
     );
+    console.log('Tool decisions:', toolDecisions.map(d => ({
+      shouldCall: d.shouldCall,
+      toolName: d.toolName,
+      reason: d.reason,
+    })));
 
     // Validate tool call decisions
     for (const decision of toolDecisions) {
@@ -105,10 +134,16 @@ export class Orchestrator {
     }
 
     // Step 4: Execute tool calls (if any)
+    console.log('Executing tool calls...');
     const orchestrationResult = await this.toolOrchestrator.executeToolCalls(
       toolDecisions,
       context
     );
+    console.log('Tool calls executed:', {
+      count: orchestrationResult.toolCalls.length,
+      toolNames: orchestrationResult.toolCalls.map(c => c.toolName),
+      nextState: orchestrationResult.nextState,
+    });
 
     // Step 5: Update state if tool calls changed it
     if (orchestrationResult.nextState) {
@@ -122,6 +157,82 @@ export class Orchestrator {
     // Step 6: Handle state transitions based on intent
     context = await this.handleStateTransition(context, intentClassification.intent);
 
+    // Step 7: Handle special intents (like SEND_EMAIL) before composing response
+    if (intentClassification.intent === UserIntent.SEND_EMAIL) {
+      console.log('SEND_EMAIL intent detected');
+      // Extract email from message or entities
+      const emailMatch = input.message.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+      const email = emailMatch ? emailMatch[0] : intentClassification.entities?.email;
+      console.log('Extracted email:', email);
+      
+      if (!email && context.tripId) {
+        // No email found - ask user for email
+        return {
+          response: {
+            text: "I'd be happy to send you the itinerary via email! What email address should I send it to?",
+            state: context.state,
+            metadata: { tripId: context.tripId },
+          },
+          context,
+          toolCalls: orchestrationResult.toolCalls,
+        };
+      }
+      
+      if (email && context.tripId) {
+        // Call the send-pdf endpoint (use internal call instead of HTTP)
+        try {
+          // Import the itinerary route handler directly
+          const { default: itineraryRouter } = await import('../routes/itinerary');
+          // For now, we'll handle this in the response composer
+          // The actual email sending will be triggered by the frontend button
+          // or we can add a helper function here
+          
+          // Use internal HTTP call to the send-pdf endpoint
+          const { config } = await import('../config/env');
+          const baseUrl = process.env.BASE_URL || `http://localhost:${config.port}`;
+          const pdfResponse = await fetch(`${baseUrl}/api/itinerary/send-pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tripId: context.tripId, email }),
+          });
+          
+          if (pdfResponse.ok) {
+            const pdfData = await pdfResponse.json();
+            return {
+              response: {
+                text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
+                state: context.state,
+                metadata: { tripId: context.tripId },
+              },
+              context,
+              toolCalls: orchestrationResult.toolCalls,
+            };
+          } else {
+            return {
+              response: {
+                text: `I encountered an issue sending the email. Please try using the "Send PDF via Email" button in the itinerary display, or check that the email service is configured.`,
+                state: context.state,
+                metadata: { tripId: context.tripId },
+              },
+              context,
+              toolCalls: orchestrationResult.toolCalls,
+            };
+          }
+        } catch (error) {
+          console.error('Error sending PDF via email:', error);
+          return {
+            response: {
+              text: `I encountered an error while trying to send the email. Please try using the "Send PDF via Email" button in the itinerary display.`,
+              state: context.state,
+              metadata: { tripId: context.tripId },
+            },
+            context,
+            toolCalls: orchestrationResult.toolCalls,
+          };
+        }
+      }
+    }
+    
     // Step 7: Compose response
     // LLM is used HERE for response generation (single LLM agent)
     // Tool outputs are provided as context, not generated by LLM
@@ -253,6 +364,44 @@ export class Orchestrator {
   }
 
   /**
+   * Parse relative date strings to ISO date format
+   */
+  private parseRelativeDate(dateStr: string): string | null {
+    const lower = dateStr.toLowerCase().trim();
+    const today = new Date();
+    
+    if (lower.includes('today')) {
+      return today.toISOString().split('T')[0];
+    }
+    
+    if (lower.includes('tomorrow')) {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      return tomorrow.toISOString().split('T')[0];
+    }
+    
+    if (lower.includes('next week')) {
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+      return nextWeek.toISOString().split('T')[0];
+    }
+    
+    if (lower.includes('next month')) {
+      const nextMonth = new Date(today);
+      nextMonth.setMonth(today.getMonth() + 1);
+      return nextMonth.toISOString().split('T')[0];
+    }
+    
+    // Try to parse as ISO date
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+    
+    return null;
+  }
+
+  /**
    * Update context with entities extracted from intent classification
    */
   private async updateContextWithEntities(
@@ -277,10 +426,19 @@ export class Orchestrator {
     }
 
     if (entities.startDate) {
-      context.preferences.startDate = entities.startDate;
+      // Parse relative dates like "next week", "tomorrow", etc.
+      let parsedDate = this.parseRelativeDate(entities.startDate);
+      if (!parsedDate) {
+        // Try to parse as ISO date
+        parsedDate = entities.startDate;
+      }
+      context.preferences.startDate = parsedDate;
       if (!context.collectedFields.includes('startDate')) {
         context.collectedFields.push('startDate');
       }
+    } else if (!context.preferences.startDate) {
+      // Default to today if no startDate provided
+      context.preferences.startDate = new Date().toISOString().split('T')[0];
     }
 
     if (entities.interests) {

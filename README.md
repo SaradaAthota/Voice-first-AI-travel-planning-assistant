@@ -1,17 +1,18 @@
 # Voice-First AI Travel Planning Assistant
 
-An intelligent travel planning assistant that uses voice input to create personalized travel itineraries with real-time transcription, AI-powered recommendations, and automated PDF generation with email delivery.
+An intelligent travel planning assistant that uses voice input to create personalized travel itineraries with real-time transcription, AI-powered recommendations, RAG-enhanced explanations, and automated PDF generation with email delivery.
 
 ## 🚀 Features
 
 - **Voice-First Interface**: Record your travel preferences using natural speech
 - **Real-Time Transcription**: Live transcript display with Server-Sent Events (SSE)
 - **AI-Powered Itinerary Generation**: Creates day-by-day itineraries based on your preferences
-- **RAG-Enhanced Recommendations**: Retrieves relevant travel information from knowledge base
+- **RAG-Enhanced Recommendations**: Retrieves relevant travel information from knowledge base for city guidance, safety tips, and explanations
 - **POI Discovery**: Finds Points of Interest using OpenStreetMap data
+- **Grounded Explanations**: Answers "why" questions with citations from RAG and OSM sources
 - **Automatic Evaluations**: Validates feasibility, edit correctness, and grounding
 - **PDF Generation**: Automatically generates and emails beautiful PDF itineraries
-- **Responsive UI**: Clean, modern interface with day-wise itinerary display
+- **Responsive UI**: Clean, modern interface with day-wise itinerary display and citations
 
 ## 📋 Tech Stack
 
@@ -20,10 +21,11 @@ An intelligent travel planning assistant that uses voice input to create persona
 - **Tailwind CSS** for styling
 - **MediaRecorder API** for voice recording
 - **Server-Sent Events (SSE)** for real-time updates
+- **Playwright** for E2E testing
 
 ### Backend
 - **Node.js** + **TypeScript** + **Express.js**
-- **OpenAI API** for LLM and embeddings
+- **OpenAI API** for LLM and embeddings (Whisper for STT)
 - **Supabase** (PostgreSQL) for data storage
 - **ChromaDB** for vector storage and RAG
 - **Puppeteer** for PDF generation
@@ -92,9 +94,22 @@ CHROMADB_URL=http://localhost:8000
 N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
 ```
 
-Run database migrations:
+#### Database Setup
+
+**Option 1: Using Supabase SQL Editor (Recommended)**
+
+1. Go to your Supabase project dashboard: https://supabase.com/dashboard
+2. Select your project
+3. Click on **"SQL Editor"** in the left sidebar
+4. Click **"New query"**
+5. Copy and paste the SQL from `backend/migrations/001_initial_schema.sql`
+6. Click **"Run"** (or press `Ctrl+Enter`)
+7. Verify tables were created in **"Table Editor"**
+
+**Option 2: Using Migration Script**
 
 ```bash
+cd backend
 npm run migrate
 ```
 
@@ -123,20 +138,34 @@ Frontend will be available at `http://localhost:5173`
 
 ### 4. ChromaDB Setup (Local Development)
 
+**⚠️ IMPORTANT: Ensure Docker Desktop is running!**
+
 Start ChromaDB using Docker Compose:
 
 ```bash
 docker-compose up -d chromadb
 ```
 
+Verify it's running:
+
+```bash
+curl http://localhost:8000/api/v1/heartbeat
+```
+
+Expected: `{"nanosecond heartbeat": <timestamp>}`
+
 ChromaDB will be available at `http://localhost:8000`
 
 ### 5. n8n Workflow Setup (Optional)
 
 1. Import the workflow from `n8n/workflow-itinerary-pdf-email.json`
-2. Configure SMTP credentials for email sending
-3. Update the workflow to use the backend PDF endpoint (see `n8n/README.md`)
+2. Configure SMTP credentials for email sending:
+   - For Gmail: Use App Password (not regular password)
+   - Port 587: SSL/TLS should be OFF (STARTTLS is used)
+   - Port 465: SSL/TLS should be ON
+3. Update the workflow to use the backend PDF endpoint (`/api/pdf/generate-pdf`)
 4. Copy the webhook URL and add it to `backend/.env` as `N8N_WEBHOOK_URL`
+5. Ensure the workflow is **ACTIVE** (toggled on)
 
 See `n8n/README.md` for detailed setup instructions.
 
@@ -174,13 +203,40 @@ npm run test:e2e:ui
 
 ### Manual Testing
 
-1. Start backend: `cd backend && npm run dev`
-2. Start frontend: `cd frontend && npm run dev`
-3. Open `http://localhost:5173` in your browser
-4. Click the microphone button to start recording
-5. Speak your travel preferences (e.g., "I want to visit Jaipur for 3 days")
-6. View the generated itinerary
-7. Test PDF generation and email delivery
+1. **Start Services**:
+   ```bash
+   # Terminal 1: ChromaDB
+   docker-compose up -d chromadb
+   
+   # Terminal 2: Backend
+   cd backend && npm run dev
+   
+   # Terminal 3: Frontend
+   cd frontend && npm run dev
+   ```
+
+2. **Open Application**: Navigate to `http://localhost:5173` in your browser
+
+3. **Test Voice Input**:
+   - Click the microphone button to start recording
+   - Speak your travel preferences (e.g., "I want to visit New Delhi for 2 days next week")
+   - Wait for transcription and itinerary generation
+
+4. **Test Itinerary Display**:
+   - Verify day-wise itinerary is displayed
+   - Check morning/afternoon/evening blocks
+   - Verify duration and travel time are shown
+   - Check that citations appear in "Sources & References" section
+
+5. **Test Explanations**:
+   - Ask "Why did you pick this place?"
+   - Verify explanation includes citations
+   - Check that RAG data is used for city guidance
+
+6. **Test PDF Generation**:
+   - After itinerary is generated, say "share it to me" or "send it via email"
+   - Provide your email address when prompted
+   - Check your inbox for the PDF
 
 ## 📚 API Endpoints
 
@@ -190,23 +246,19 @@ npm run test:e2e:ui
 - `POST /api/voice/complete` - Complete voice session
 - `GET /api/voice/session/new` - Create new session
 
+### Chat
+- `POST /api/chat` - Process message and generate/update itinerary
+
 ### Trips
 - `POST /api/trips` - Create new trip
 - `GET /api/trips/:id` - Get trip details
 - `PUT /api/trips/:id` - Update trip
+- `GET /api/trips/:id/itinerary` - Get itinerary for trip
 
 ### Itinerary
-- `GET /api/itinerary/:tripId` - Get itinerary for trip
+- `POST /api/itinerary/send-pdf` - Send itinerary PDF via email
 - `POST /api/itinerary/generate` - Generate itinerary
 - `POST /api/itinerary/edit` - Edit itinerary
-
-### Explanations
-- `POST /api/explanations` - Get explanation for POI or activity
-
-### Evaluations
-- `POST /api/evaluations/feasibility` - Run feasibility evaluation
-- `POST /api/evaluations/edit-correctness` - Run edit correctness evaluation
-- `POST /api/evaluations/grounding` - Run grounding evaluation
 
 ### PDF
 - `POST /api/pdf/generate-pdf` - Generate PDF from HTML
@@ -219,10 +271,10 @@ See `backend/.env.example` for all required environment variables.
 
 ### Supabase Setup
 
-1. Create a new Supabase project
-2. Get your project URL and API keys from Settings → API
-3. Get your database connection string from Settings → Database
-4. Run migrations: `cd backend && npm run migrate`
+1. Create a new Supabase project at https://supabase.com
+2. Get your project URL and API keys from **Settings → API**
+3. Get your database connection string from **Settings → Database**
+4. Run migrations using SQL Editor (see Database Setup above)
 
 ### OpenAI Setup
 
@@ -231,7 +283,11 @@ See `backend/.env.example` for all required environment variables.
 
 ### n8n Setup
 
-See `n8n/README.md` for detailed n8n workflow setup instructions.
+1. Deploy n8n instance (Railway, self-hosted, or cloud)
+2. Import workflow from `n8n/workflow-itinerary-pdf-email.json`
+3. Configure SMTP credentials (Gmail App Password recommended)
+4. Set up HTTP Request node to call backend PDF endpoint
+5. Get webhook URL and add to `backend/.env`
 
 ## 🐳 Docker Compose
 
@@ -251,8 +307,7 @@ This will start:
 - **Backend**: See `backend/README.md`
 - **Frontend**: See `frontend/README.md`
 - **n8n Workflow**: See `n8n/README.md`
-- **Deployment**: See `DEPLOYMENT.md`
-- **Troubleshooting**: See `TROUBLESHOOTING.md`
+- **Component Documentation**: See README files in respective directories
 
 ## 🚢 Deployment
 
@@ -262,7 +317,7 @@ This will start:
 2. Select `backend` directory
 3. Build command: `npm install && npm run build`
 4. Start command: `npm start`
-5. Add all environment variables
+5. Add all environment variables from `backend/.env`
 
 ### Frontend (Vercel)
 
@@ -275,17 +330,72 @@ This will start:
 
 ### ChromaDB
 
-Deploy ChromaDB container with persistent storage.
+Deploy ChromaDB container with persistent storage (Docker, Railway, or similar).
 
 ### n8n (Railway)
 
 1. Create new Railway project
 2. Add n8n service
-3. Import workflow
+3. Import workflow from `n8n/workflow-itinerary-pdf-email.json`
 4. Configure SMTP credentials
-5. Get webhook URL
+5. Get webhook URL and add to backend environment variables
 
-See `DEPLOYMENT.md` for detailed deployment instructions.
+## 🐛 Troubleshooting
+
+### Backend Issues
+
+**Port Already in Use (EADDRINUSE)**:
+```bash
+# Windows PowerShell
+cd backend
+npm run kill-port
+
+# Or manually find and kill process
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+```
+
+**Database Connection Errors**:
+- Verify `DATABASE_URL` is correct
+- Check Supabase connection pooling settings
+- Ensure database is accessible (not paused)
+- Run migrations if tables don't exist
+
+**ChromaDB Connection Errors**:
+```bash
+# Verify ChromaDB is running
+docker ps
+curl http://localhost:8000/api/v1/heartbeat
+```
+
+**OpenAI API Errors**:
+- Verify `OPENAI_API_KEY` is set correctly
+- Check API key has sufficient credits
+- Check API usage limits
+
+### Frontend Issues
+
+**ECONNREFUSED to Backend**:
+- Ensure backend is running on `http://localhost:3000`
+- Check Vite proxy configuration in `frontend/vite.config.ts`
+
+**Transcription Not Showing**:
+- Check browser console for SSE connection errors
+- Verify backend SSE endpoint is working
+- Check that audio is being uploaded successfully
+
+### n8n Issues
+
+**Email Not Sending**:
+- Verify SMTP credentials are correct
+- For Gmail: Use App Password (not regular password)
+- Check SSL/TLS settings (OFF for port 587, ON for port 465)
+- Verify workflow is ACTIVE
+
+**PDF Generation Fails**:
+- Check backend PDF endpoint is accessible
+- Verify HTTP Request node uses "File" response format (not "Binary")
+- Check n8n workflow execution logs
 
 ## 🤝 Contributing
 
@@ -302,31 +412,31 @@ MIT License
 ## 🆘 Support
 
 - **Documentation**: See individual README files in each directory
-- **Troubleshooting**: See `TROUBLESHOOTING.md`
 - **Issues**: Open an issue on GitHub
 
-## 🎯 Project Phases
+## 🎯 Key Features Implementation
 
-This project was developed in phases:
+### RAG Integration
+- **City Guidance**: RAG retrieves practical information about safety, etiquette, areas to visit
+- **Explanations**: All "why" questions are answered using RAG data with citations
+- **Citations**: All factual tips have citations from RAG (Wikivoyage/Wikipedia) and OSM sources
 
-- **Phase 1-3**: Foundation and database setup
-- **Phase 4-6**: MCP tools and orchestration
-- **Phase 7-8**: RAG integration and itinerary generation
-- **Phase 9**: Explanation handling
-- **Phase 10**: Evaluation system
-- **Phase 11**: Companion UI
-- **Phase 12**: PDF generation and email
-- **Phase 13**: Testing and deployment
+### Voice Interface
+- **Real-Time Transcription**: Uses OpenAI Whisper API for speech-to-text
+- **SSE Streaming**: Live transcript updates via Server-Sent Events
+- **Audio Processing**: WebM format support with automatic conversion
 
-## 🔐 Security
+### Itinerary Generation
+- **Day-Wise Structure**: Morning/Afternoon/Evening blocks
+- **POI Discovery**: OpenStreetMap integration for finding points of interest
+- **Feasibility**: Automatic validation of travel time and duration
+- **Citations**: OSM citations for all POIs included in itinerary
 
-- All API keys stored in environment variables
-- HTTPS required for production
-- CORS configured for frontend origin
-- Input validation on all endpoints
-- SQL injection prevention via parameterized queries
+### PDF & Email
+- **PDF Generation**: Puppeteer-based HTML to PDF conversion
+- **Email Delivery**: n8n workflow for automated email sending
+- **Voice Commands**: "Share it to me" or "Send via email" triggers PDF generation
 
 ---
 
 Built with ❤️ for intelligent travel planning
-

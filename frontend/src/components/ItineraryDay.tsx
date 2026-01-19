@@ -14,12 +14,33 @@ interface ItineraryDayProps {
 
 export function ItineraryDay({ day }: ItineraryDayProps) {
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    });
+    if (!dateStr) return 'Date TBD';
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        // Invalid date, try parsing as ISO string
+        const isoDate = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+        const parsed = new Date(isoDate);
+        if (isNaN(parsed.getTime())) {
+          return dateStr; // Return original if still invalid
+        }
+        return parsed.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      }
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateStr, error);
+      return dateStr; // Return original string if formatting fails
+    }
   };
 
   const formatTime = (minutes: number) => {

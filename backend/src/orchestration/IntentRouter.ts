@@ -80,9 +80,10 @@ Your job is to classify user messages into one of these intents:
 - PLAN_TRIP: User wants to plan a new trip (e.g., "Plan a 3-day trip to Jaipur")
 - PROVIDE_PREFERENCE: User providing preference information (e.g., "I like food and culture")
 - CONFIRM: User confirming constraints or preferences (e.g., "Yes, that's correct")
-- EDIT_ITINERARY: User wants to edit the itinerary (e.g., "Make Day 2 more relaxed")
+- EDIT_ITINERARY: User wants to edit the itinerary (e.g., "Make Day 2 more relaxed", "Exchange day 1 and day 2")
 - EXPLAIN: User asking for explanation (e.g., "Why did you pick this place?")
 - CLARIFY: User asking for clarification (e.g., "What do you mean?")
+- SEND_EMAIL: User wants to send itinerary via email (e.g., "Send me the itinerary via email", "Email me the PDF", "Send PDF to my email", "share it to me", "share the itinerary", "send it to my email", "mail it to me")
 
 Current conversation state: ${context.state}
 Current preferences: ${JSON.stringify(context.preferences, null, 2)}
@@ -94,6 +95,7 @@ Extract entities from the message:
 - interests: Array of interests (food, culture, history, etc.)
 - pace: relaxed, moderate, or fast
 - editTarget: For edits, which day/block is being edited
+- email: Email address (for SEND_EMAIL intent, extract if mentioned)
 
 Return JSON with:
 {
@@ -193,11 +195,39 @@ Classify the intent and extract entities.`;
     if (
       lowerMessage.includes('yes') ||
       lowerMessage.includes('correct') ||
-      lowerMessage.includes('confirm')
+      lowerMessage.includes('confirm') ||
+      lowerMessage.includes('finalize') ||
+      lowerMessage.includes('finalise') ||
+      lowerMessage.includes('go ahead') ||
+      lowerMessage.includes('that works') ||
+      lowerMessage.includes('sounds good') ||
+      lowerMessage.includes('proceed') ||
+      lowerMessage.includes('okay') ||
+      lowerMessage.includes('ok')
     ) {
       return {
         intent: UserIntent.CONFIRM,
-        confidence: 0.7,
+        confidence: 0.8,
+        entities: {},
+        requiresClarification: false,
+      };
+    }
+
+    // Check for SEND_EMAIL intent - catch phrases like "share it to me", "send it via email", etc.
+    if (
+      (lowerMessage.includes('send') && (lowerMessage.includes('email') || lowerMessage.includes('mail') || lowerMessage.includes('pdf'))) ||
+      (lowerMessage.includes('email') && (lowerMessage.includes('itinerary') || lowerMessage.includes('pdf') || lowerMessage.includes('plan'))) ||
+      (lowerMessage.includes('share') && (lowerMessage.includes('email') || lowerMessage.includes('mail') || lowerMessage.includes('pdf') || lowerMessage.includes('it to me') || lowerMessage.includes('itinerary') || lowerMessage.includes('it'))) ||
+      (lowerMessage.includes('mail') && (lowerMessage.includes('itinerary') || lowerMessage.includes('pdf') || lowerMessage.includes('it'))) ||
+      (lowerMessage.includes('pdf') && (lowerMessage.includes('email') || lowerMessage.includes('mail') || lowerMessage.includes('send'))) ||
+      lowerMessage === 'share it to me' ||
+      lowerMessage === 'share it' ||
+      lowerMessage.startsWith('share it') ||
+      (lowerMessage.includes('share') && lowerMessage.includes('it'))
+    ) {
+      return {
+        intent: UserIntent.SEND_EMAIL,
+        confidence: 0.8,
         entities: {},
         requiresClarification: false,
       };

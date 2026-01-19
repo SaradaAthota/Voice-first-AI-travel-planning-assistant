@@ -29,7 +29,8 @@ export enum UserIntent {
   CONFIRM = 'CONFIRM',               // User confirming constraints
   EDIT_ITINERARY = 'EDIT_ITINERARY', // User wants to edit itinerary
   EXPLAIN = 'EXPLAIN',               // User asking for explanation
-  CLARIFY = 'CLARIFY'                // User asking for clarification
+  CLARIFY = 'CLARIFY',               // User asking for clarification
+  SEND_EMAIL = 'SEND_EMAIL'         // User wants to send itinerary via email
 }
 
 /**

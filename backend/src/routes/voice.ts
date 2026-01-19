@@ -40,22 +40,55 @@ const upload = multer({
  * Upload audio chunk for transcription
  */
 router.post('/upload', upload.single('audio'), async (req: Request, res: Response) => {
+  console.log('=== UPLOAD ENDPOINT CALLED ===');
+  console.log('Request body:', { 
+    sessionId: req.body.sessionId, 
+    tripId: req.body.tripId,
+    chunkIndex: req.body.chunkIndex,
+    isFinal: req.body.isFinal 
+  });
+  console.log('File received:', req.file ? {
+    size: req.file.size,
+    mimetype: req.file.mimetype,
+    originalname: req.file.originalname,
+  } : 'NO FILE');
+  
   try {
     const { sessionId, tripId, chunkIndex, isFinal } = req.body;
 
     if (!sessionId) {
+      console.error('Missing sessionId');
       return res.status(400).json({ error: 'sessionId is required' });
     }
 
     if (!req.file) {
+      console.error('No file in request');
       return res.status(400).json({ error: 'Audio file is required' });
     }
 
     const chunkIdx = parseInt(chunkIndex || '0', 10);
     const final = isFinal === 'true' || isFinal === true;
 
-    // Transcribe audio
-    const sttResult = await transcribeAudio(req.file.buffer, req.file.mimetype);
+    // Get MIME type, defaulting to webm if not provided
+    const mimeType = req.file.mimetype || 'audio/webm';
+    
+    // Log for debugging (STEP 6)
+    console.log('Audio upload received:', {
+      mimetype: mimeType,
+      size: req.file.size,
+      name: req.file.originalname,
+    });
+
+    // OpenAI Whisper supports WebM directly - no conversion needed!
+    // Just ensure the file has the correct extension
+    // Skip FFmpeg conversion and send WebM directly
+    console.log('Starting transcription...');
+    const sttResult = await transcribeAudio(req.file.buffer, mimeType);
+    console.log('Transcription result:', { 
+      text: sttResult.text, 
+      length: sttResult.text.length,
+      hasText: !!sttResult.text 
+    });
 
     // Create transcript update
     const update: TranscriptUpdate = {
@@ -67,11 +100,20 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       chunkIndex: chunkIdx,
     };
 
+    console.log('Broadcasting transcript update:', {
+      sessionId,
+      textLength: update.text.length,
+      textPreview: update.text.substring(0, 50),
+      isFinal: update.isFinal,
+    });
+
     // Append to transcript
     await appendTranscript(update);
 
-    // Broadcast to SSE clients
+    // Broadcast to SSE clients IMMEDIATELY - do this BEFORE returning response
+    console.log('About to broadcast transcript update. SessionId:', sessionId);
     broadcastTranscriptUpdate(update);
+    console.log('Transcript update broadcasted to SSE clients');
 
     // Return success
     res.json({

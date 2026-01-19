@@ -42,20 +42,61 @@ export async function transcribeAudio(
   const client = getOpenAIClient();
 
   try {
-    // OpenAI SDK accepts File, Blob, or Buffer
-    // In Node.js, we can pass the Buffer directly or create a File
-    // File is available in Node.js 18+ as a global
-    let file: File | Buffer;
-    
-    if (typeof File !== 'undefined') {
-      file = new File([audioBuffer], 'audio.webm', { type: mimeType });
-    } else {
-      // Fallback: pass Buffer directly (OpenAI SDK should handle it)
-      file = audioBuffer;
+    // Map MIME types to file extensions that OpenAI supports
+    const mimeToExtension: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/webm;codecs=opus': 'webm',
+      'audio/ogg': 'ogg',
+      'audio/oga': 'oga',
+      'audio/wav': 'wav',
+      'audio/mp3': 'mp3',
+      'audio/mpeg': 'mpeg',
+      'audio/mp4': 'm4a',
+      'audio/m4a': 'm4a',
+      'audio/flac': 'flac',
+      'audio/x-flac': 'flac',
+      'audio/mpga': 'mpga',
+    };
+
+    // Extract base MIME type (remove codecs parameter)
+    const baseMimeType = mimeType.split(';')[0].toLowerCase().trim();
+    // If it's WAV (from conversion), use that; otherwise map to extension
+    const extension = baseMimeType === 'audio/wav' ? 'wav' :
+                     mimeToExtension[baseMimeType] || mimeToExtension[mimeType.toLowerCase()] || 'wav';
+    const filename = `audio.${extension}`;
+
+    // Log for debugging
+    console.log('Transcribing audio:', {
+      mimeType,
+      baseMimeType,
+      extension,
+      filename,
+      bufferSize: audioBuffer.length,
+    });
+
+    // Create File object (available in Node.js 18+)
+    // OpenAI SDK requires File object with proper extension
+    // The filename extension is critical - OpenAI uses it to determine format
+    const file = new File([audioBuffer], filename, { 
+      type: baseMimeType || 'audio/webm' 
+    });
+
+    // Verify file was created correctly
+    if (!file || file.size === 0) {
+      throw new Error('Failed to create valid File object from audio buffer');
     }
 
+    console.log('File object created:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      extension: filename.split('.').pop(),
+    });
+
+    // OpenAI SDK accepts File, but we need to ensure the format is correct
+    // Try using the File object directly
     const response = await client.audio.transcriptions.create({
-      file: file as any,
+      file: file,
       model: 'whisper-1',
       language: 'en', // Can be made configurable
       response_format: 'json',

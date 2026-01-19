@@ -2,7 +2,7 @@
  * Main App Component
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MicButton } from './components/MicButton';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ItineraryDisplay } from './components/ItineraryDisplay';
@@ -18,6 +18,11 @@ function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [tripId, setTripId] = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
+  const [assistantResponse, setAssistantResponse] = useState<string | null>(null);
+  const [itineraryFromResponse, setItineraryFromResponse] = useState<ItineraryOutput | null>(null);
+  const [processedTranscript, setProcessedTranscript] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const lastProcessedTimestampRef = useRef<number>(0);
 
   // Get or create session
   useEffect(() => {
@@ -39,20 +44,159 @@ function App() {
 
   // SSE transcript
   const transcript = useSSETranscript(sessionId || '');
+  const transcriptText = transcript.transcript;
+  const transcriptIsFinal = transcript.isFinal;
 
-  // Itinerary
-  const { itinerary, loading: itineraryLoading, error: itineraryError, refetch: refetchItinerary } = useItinerary(tripId);
+  // Itinerary - use from response first, fallback to hook
+  const { itinerary: itineraryFromHook, loading: itineraryLoading, error: itineraryError, refetch: refetchItinerary } = useItinerary(tripId);
+  const itinerary = itineraryFromResponse || itineraryFromHook;
 
-  // Listen for trip creation/updates (would come from orchestrator response)
-  // For now, we'll simulate - in production, this would come from API responses
+  // Process transcript when it's finalized and contains meaningful content
   useEffect(() => {
-    // When transcript changes and contains trip info, extract tripId
-    // This is a placeholder - in production, tripId would come from API responses
-    if (transcript.transcript && transcript.transcript.includes('trip')) {
-      // Extract tripId from transcript or API response
-      // For now, we'll use a mock tripId
+    console.log('Transcript effect triggered:', {
+      transcript: transcriptText,
+      transcriptLength: transcriptText?.trim().length,
+      isFinal: transcriptIsFinal,
+      tripId,
+      sessionId,
+      hasTranscript: !!transcriptText,
+      processedTranscript,
+      isProcessing,
+    });
+    
+    // Only process if:
+    // 1. Transcript is finalized (isFinal: true)
+    // 2. Transcript is substantial (more than 10 characters)
+    // 3. We have a session ID
+    // 4. We haven't processed this exact transcript before
+    // 5. We're not already processing another request
+    if (
+      transcriptIsFinal &&
+      transcriptText && 
+      transcriptText.trim().length > 10 && 
+      sessionId &&
+      transcriptText !== processedTranscript &&
+      !isProcessing
+    ) {
+      console.log('Processing FINALIZED transcript:', transcriptText);
+      
+      // Call the chat API to process the message
+      const processTranscript = async () => {
+        // Double-check we're not already processing
+        if (isProcessing) {
+          console.log('Already processing, skipping...');
+          return;
+        }
+        
+        // Clear previous response before processing new one
+        setAssistantResponse(null);
+        setItineraryFromResponse(null);
+        
+        // Track this request with a timestamp
+        const requestTimestamp = Date.now();
+        lastProcessedTimestampRef.current = requestTimestamp;
+        setIsProcessing(true);
+        
+        console.log('=== CALLING CHAT API ===');
+        console.log('Message:', transcriptText);
+        console.log('Request timestamp:', requestTimestamp);
+        
+        try {
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: transcriptText,
+            }),
+          });
+
+          console.log('Chat API response status:', response.status, response.statusText);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Chat API error response:', errorText);
+            throw new Error(`Failed to process message: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          console.log('Chat API response data:', data);
+          console.log('Response timestamp:', requestTimestamp, 'Last processed:', lastProcessedTimestampRef.current);
+
+          // Only update state if this is still the latest request
+          if (requestTimestamp < lastProcessedTimestampRef.current) {
+            console.log('Ignoring stale response - newer request in progress');
+            return;
+          }
+
+          // Mark transcript as processed FIRST to prevent duplicate processing
+          setProcessedTranscript(transcriptText);
+
+          // Store citations FIRST (before other state updates)
+          // Citations should include both RAG (city guidance) and OSM (POI) citations
+          if (data.citations && Array.isArray(data.citations) && data.citations.length > 0) {
+            console.log('Setting citations:', data.citations.length, 'citations');
+            console.log('Citation sources:', data.citations.map((c: any) => c.source));
+            setCitations(data.citations);
+          } else {
+            console.log('No citations in response or empty array');
+            // Don't clear existing citations - they might still be relevant
+            // Only clear if explicitly told to or when starting a new recording
+          }
+
+          if (data.success && data.tripId) {
+            console.log('Setting tripId:', data.tripId);
+            setTripId(data.tripId);
+            
+            // Handle itinerary - prioritize itinerary over assistant response
+            if (data.itinerary) {
+              console.log('Itinerary received in response, setting directly');
+              setItineraryFromResponse(data.itinerary);
+              // Clear assistant response when itinerary is available
+              setAssistantResponse(null);
+            } else {
+              setItineraryFromResponse(null);
+              
+              // Only show assistant response if no itinerary
+              if (data.response) {
+                setAssistantResponse(data.response);
+              }
+              
+              // Only fetch from /api/trips/:id/itinerary if:
+              // 1. hasItinerary is true AND
+              // 2. itinerary not in response (it might be saved but not returned)
+              if (data.hasItinerary && !data.itinerary) {
+                console.log('hasItinerary is true but itinerary not in response, fetching...');
+                setTimeout(() => {
+                  refetchItinerary();
+                }, 1000);
+              } else if (!data.hasItinerary) {
+                console.log('hasItinerary is false - itinerary not ready yet');
+                // This is expected - assistant will ask follow-up questions
+                // Show assistant response for follow-up questions
+              }
+            }
+          } else {
+            console.warn('Chat API returned success but no tripId:', data);
+            // Still show response even if no tripId
+            if (data.response) {
+              setAssistantResponse(data.response);
+            }
+            // Citations should already be set above
+          }
+        } catch (error) {
+          console.error('Error processing transcript:', error);
+          // Don't set error state here - let the assistant response handle it
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      // Process immediately since transcript is already finalized
+      processTranscript();
     }
-  }, [transcript.transcript]);
+  }, [transcriptIsFinal, transcriptText, tripId, sessionId, processedTranscript, isProcessing, refetchItinerary]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -76,9 +220,9 @@ function App() {
               </div>
 
               {/* Transcript Display */}
-              {sessionId && (
-                <TranscriptDisplay transcript={transcript} />
-              )}
+                    {sessionId && (
+                      <TranscriptDisplay transcript={transcript} />
+                    )}
 
               {/* Session Info */}
               {sessionId && (
@@ -91,8 +235,8 @@ function App() {
 
           {/* Right Column: Itinerary & Sources */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Itinerary Display */}
-            {itineraryLoading ? (
+            {/* Itinerary Display - Priority: Show itinerary if available, then assistant response, then empty state */}
+            {itineraryLoading && !itinerary ? (
               <div className="bg-white rounded-xl shadow-lg p-8 text-center">
                 <p className="text-gray-500">Loading itinerary...</p>
               </div>
@@ -100,9 +244,25 @@ function App() {
               <div className="bg-white rounded-xl shadow-lg p-8 text-center">
                 <p className="text-red-500">Error: {itineraryError}</p>
               </div>
-            ) : (
-              <ItineraryDisplay itinerary={itinerary} />
-            )}
+            ) : itinerary ? (
+              <ItineraryDisplay itinerary={itinerary} tripId={tripId} />
+            ) : assistantResponse ? (
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                      <span className="text-white text-sm font-bold">AI</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-gray-800 whitespace-pre-wrap">{assistantResponse}</p>
+                    {itineraryLoading && (
+                      <p className="text-sm text-gray-500 mt-2">Generating itinerary...</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Sources Section */}
             {citations.length > 0 && (
