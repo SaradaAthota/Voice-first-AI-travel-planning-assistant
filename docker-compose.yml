@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ChromaDB Service
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: voice-travel-chromadb
+    ports:
+      - "8000:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chromadb_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - voice-travel-network
+
+  # Backend API (for local development)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voice-travel-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMADB_URL=http://chromadb:8000
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    networks:
+      - voice-travel-network
+    command: npm run dev
+
+  # Frontend (for local development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voice-travel-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - voice-travel-network
+    command: npm run dev
+
+volumes:
+  chromadb_data:
+    driver: local
+
+networks:
+  voice-travel-network:
+    driver: bridge
+

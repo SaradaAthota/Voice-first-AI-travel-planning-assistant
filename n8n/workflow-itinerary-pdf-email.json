@@ -1,0 +1,147 @@
+{
+  "name": "Itinerary PDF Email",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "itinerary-pdf",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "itinerary-pdf-email"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format itinerary data into HTML\nconst itinerary = $input.item.json.body.itinerary || $input.item.json.itinerary;\nconst userEmail = $input.item.json.body.email || $input.item.json.email;\n\nif (!itinerary) {\n  throw new Error('Itinerary data is required');\n}\n\nif (!userEmail) {\n  throw new Error('User email is required');\n}\n\n// Helper function to format time\nfunction formatTime(timeStr) {\n  const [hours, minutes] = timeStr.split(':');\n  const hour = parseInt(hours, 10);\n  const ampm = hour >= 12 ? 'PM' : 'AM';\n  const displayHour = hour % 12 || 12;\n  return `${displayHour}:${minutes} ${ampm}`;\n}\n\n// Helper function to format duration\nfunction formatDuration(minutes) {\n  const hours = Math.floor(minutes / 60);\n  const mins = minutes % 60;\n  if (hours === 0) return `${mins}m`;\n  if (mins === 0) return `${hours}h`;\n  return `${hours}h ${mins}m`;\n}\n\n// Helper function to format date\nfunction formatDate(dateStr) {\n  const date = new Date(dateStr);\n  return date.toLocaleDateString('en-US', {\n    weekday: 'long',\n    month: 'long',\n    day: 'numeric',\n    year: 'numeric'\n  });\n}\n\n// Build HTML\nlet html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Travel Itinerary - ${itinerary.city}</title>\n  <style>\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;\n      line-height: 1.6;\n      color: #333;\n      max-width: 800px;\n      margin: 0 auto;\n      padding: 20px;\n      background-color: #f5f5f5;\n    }\n    .header {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 30px;\n      border-radius: 10px;\n      margin-bottom: 30px;\n      box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n    }\n    .header h1 {\n      margin: 0 0 10px 0;\n      font-size: 2.5em;\n    }\n    .header p {\n      margin: 5px 0;\n      opacity: 0.9;\n    }\n    .day {\n      background: white;\n      border-radius: 10px;\n      padding: 25px;\n      margin-bottom: 25px;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    .day-header {\n      border-bottom: 2px solid #e0e0e0;\n      padding-bottom: 15px;\n      margin-bottom: 20px;\n    }\n    .day-header h2 {\n      margin: 0;\n      color: #667eea;\n      font-size: 1.8em;\n    }\n    .day-summary {\n      display: flex;\n      gap: 20px;\n      margin-bottom: 20px;\n      padding: 15px;\n      background: #f9f9f9;\n      border-radius: 5px;\n    }\n    .summary-item {\n      flex: 1;\n    }\n    .summary-label {\n      font-size: 0.85em;\n      color: #666;\n      text-transform: uppercase;\n      letter-spacing: 0.5px;\n    }\n    .summary-value {\n      font-size: 1.3em;\n      font-weight: bold;\n      color: #333;\n      margin-top: 5px;\n    }\n    .block {\n      margin-bottom: 20px;\n      padding: 20px;\n      border-radius: 8px;\n      border-left: 4px solid;\n    }\n    .block.morning {\n      background: #e3f2fd;\n      border-color: #2196f3;\n    }\n    .block.afternoon {\n      background: #fff3e0;\n      border-color: #ff9800;\n    }\n    .block.evening {\n      background: #f3e5f5;\n      border-color: #9c27b0;\n    }\n    .block-header {\n      display: flex;\n      justify-content: space-between;\n      align-items: center;\n      margin-bottom: 15px;\n    }\n    .block-title {\n      font-size: 1.3em;\n      font-weight: bold;\n      color: #333;\n    }\n    .block-time {\n      color: #666;\n      font-size: 0.9em;\n    }\n    .activity {\n      background: white;\n      padding: 15px;\n      margin-bottom: 15px;\n      border-radius: 5px;\n      border: 1px solid #e0e0e0;\n    }\n    .activity-time {\n      font-size: 0.9em;\n      color: #666;\n      margin-bottom: 8px;\n    }\n    .activity-name {\n      font-size: 1.2em;\n      font-weight: bold;\n      color: #333;\n      margin-bottom: 5px;\n    }\n    .activity-category {\n      display: inline-block;\n      background: #e0e0e0;\n      padding: 4px 10px;\n      border-radius: 12px;\n      font-size: 0.85em;\n      color: #666;\n      margin-right: 10px;\n    }\n    .activity-description {\n      color: #555;\n      margin-top: 8px;\n      font-size: 0.95em;\n    }\n    .sources {\n      background: white;\n      border-radius: 10px;\n      padding: 25px;\n      margin-top: 30px;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    .sources h3 {\n      color: #667eea;\n      margin-bottom: 20px;\n      font-size: 1.5em;\n    }\n    .source-item {\n      padding: 15px;\n      margin-bottom: 15px;\n      background: #f9f9f9;\n      border-left: 4px solid #667eea;\n      border-radius: 5px;\n    }\n    .source-name {\n      font-weight: bold;\n      color: #333;\n      margin-bottom: 5px;\n    }\n    .source-url {\n      color: #667eea;\n      text-decoration: none;\n      font-size: 0.9em;\n    }\n    .source-url:hover {\n      text-decoration: underline;\n    }\n    .footer {\n      text-align: center;\n      color: #666;\n      margin-top: 30px;\n      padding-top: 20px;\n      border-top: 1px solid #e0e0e0;\n      font-size: 0.9em;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>${itinerary.city}</h1>\n    <p>${itinerary.duration} day${itinerary.duration !== 1 ? 's' : ''} • ${itinerary.pace} pace</p>\n    <p>Starting ${formatDate(itinerary.startDate)}</p>\n  </div>\n`;\n\n// Add days\nitinerary.days.forEach(day => {\n  html += `\n  <div class=\"day\">\n    <div class=\"day-header\">\n      <h2>Day ${day.day} - ${formatDate(day.date)}</h2>\n    </div>\n    <div class=\"day-summary\">\n      <div class=\"summary-item\">\n        <div class=\"summary-label\">Total Duration</div>\n        <div class=\"summary-value\">${formatDuration(day.totalDuration)}</div>\n      </div>\n      <div class=\"summary-item\">\n        <div class=\"summary-label\">Travel Time</div>\n        <div class=\"summary-value\">${formatDuration(day.totalTravelTime)}</div>\n      </div>\n      <div class=\"summary-item\">\n        <div class=\"summary-label\">Activities</div>\n        <div class=\"summary-value\">${day.totalActivities}</div>\n      </div>\n    </div>\n`;\n\n  // Add blocks\n  ['morning', 'afternoon', 'evening'].forEach(blockType => {\n    const block = day.blocks[blockType];\n    if (block && block.activities.length > 0) {\n      const blockLabels = {\n        morning: '🌅 Morning',\n        afternoon: '☀️ Afternoon',\n        evening: '🌙 Evening'\n      };\n      \n      html += `\n    <div class=\"block ${blockType}\">\n      <div class=\"block-header\">\n        <div class=\"block-title\">${blockLabels[blockType]}</div>\n        <div class=\"block-time\">${formatTime(block.startTime)} - ${formatTime(block.endTime)}</div>\n      </div>\n`;\n      \n      block.activities.forEach((activity, idx) => {\n        html += `\n      <div class=\"activity\">\n        <div class=\"activity-time\">${formatTime(activity.startTime)} - ${formatTime(activity.endTime)} (${formatDuration(activity.duration)})</div>\n        <div class=\"activity-name\">${activity.poi.name}</div>\n        <div>\n          <span class=\"activity-category\">${activity.poi.category}</span>\n`;\n        \n        if (activity.poi.rating) {\n          html += `<span style=\"color: #666; font-size: 0.9em;\">⭐ ${activity.poi.rating}/5</span>`;\n        }\n        \n        html += `\n        </div>\n`;\n        \n        if (activity.poi.description) {\n          html += `<div class=\"activity-description\">${activity.poi.description}</div>`;\n        }\n        \n        if (activity.travelTimeFromPrevious && idx > 0) {\n          html += `<div style=\"font-size: 0.85em; color: #666; margin-top: 8px;\">🚗 Travel: ${formatDuration(activity.travelTimeFromPrevious)}</div>`;\n        }\n        \n        html += `\n      </div>\n`;\n      });\n      \n      html += `\n    </div>\n`;\n    }\n  });\n  \n  html += `\n  </div>\n`;\n});\n\n// Add sources if available\nconst citations = $input.item.json.body.citations || $input.item.json.citations || [];\nif (citations && citations.length > 0) {\n  html += `\n  <div class=\"sources\">\n    <h3>Sources & References</h3>\n`;\n  \n  citations.forEach(citation => {\n    html += `\n    <div class=\"source-item\">\n      <div class=\"source-name\">${citation.source}</div>\n`;\n    \n    if (citation.excerpt) {\n      html += `<div style=\"color: #666; font-size: 0.9em; margin: 5px 0;\">${citation.excerpt}</div>`;\n    }\n    \n    if (citation.url) {\n      html += `<a href=\"${citation.url}\" class=\"source-url\">${citation.url}</a>`;\n    }\n    \n    html += `\n    </div>\n`;\n  });\n  \n  html += `\n  </div>\n`;\n}\n\n// Add footer\nhtml += `\n  <div class=\"footer\">\n    <p>Generated by Voice-first AI Travel Planning Assistant</p>\n    <p>${new Date().toLocaleString()}</p>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    html,\n    email: userEmail,\n    itinerary: itinerary\n  }\n};"
+      },
+      "id": "format-html",
+      "name": "Format HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "htmlToPdf",
+        "options": {
+          "format": "A4",
+          "margin": {
+            "top": "20mm",
+            "right": "20mm",
+            "bottom": "20mm",
+            "left": "20mm"
+          },
+          "printBackground": true
+        },
+        "html": "={{ $json.html }}"
+      },
+      "id": "generate-pdf",
+      "name": "Generate PDF",
+      "type": "@n8n/n8n-nodes-langchain.htmlToPdf",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.N8N_EMAIL_FROM || 'travel-assistant@example.com' }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Your Travel Itinerary - {{ $json.itinerary.city }}",
+        "emailType": "html",
+        "message": "<p>Hello,</p><p>Please find your travel itinerary attached.</p><p>Enjoy your trip!</p>",
+        "attachments": {
+          "attachments": [
+            {
+              "name": "itinerary.pdf",
+              "dataPropertyName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials",
+          "name": "SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Itinerary PDF sent to {{ $('Format HTML').item.json.email }}\" } }}"
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Format HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format HTML": {
+      "main": [
+        [
+          {
+            "node": "Generate PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PDF": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1"
+}
+

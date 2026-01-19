@@ -1,0 +1,76 @@
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+interface Config {
+  env: 'development' | 'production' | 'test';
+  port: number;
+  supabase: {
+    url: string;
+    anonKey: string;
+    serviceRoleKey: string;
+  };
+  database: {
+    url: string;
+  };
+  openai?: {
+    apiKey: string;
+  };
+  elevenlabs?: {
+    apiKey: string;
+  };
+  chromadb?: {
+    url: string;
+  };
+}
+
+function getEnvVar(name: string, required = true): string {
+  const value = process.env[name];
+  if (required && !value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value || '';
+}
+
+function getEnvNumber(name: string, defaultValue: number): number {
+  const value = process.env[name];
+  return value ? parseInt(value, 10) : defaultValue;
+}
+
+export const config: Config = {
+  env: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development',
+  port: getEnvNumber('PORT', 3000),
+  supabase: {
+    url: getEnvVar('SUPABASE_URL'),
+    anonKey: getEnvVar('SUPABASE_ANON_KEY'),
+    serviceRoleKey: getEnvVar('SUPABASE_SERVICE_ROLE_KEY', false),
+  },
+  database: {
+    url: getEnvVar('DATABASE_URL'),
+  },
+  openai: process.env.OPENAI_API_KEY
+    ? {
+        apiKey: getEnvVar('OPENAI_API_KEY'),
+      }
+    : undefined,
+  elevenlabs: process.env.ELEVENLABS_API_KEY
+    ? {
+        apiKey: getEnvVar('ELEVENLABS_API_KEY'),
+      }
+    : undefined,
+  chromadb: {
+    url: process.env.CHROMADB_URL || 'http://localhost:8000',
+  },
+};
+
+// Validate required config in production
+if (config.env === 'production') {
+  if (!config.supabase.url || !config.supabase.anonKey) {
+    throw new Error('Supabase configuration is required in production');
+  }
+  if (!config.database.url) {
+    throw new Error('Database URL is required in production');
+  }
+}
+

@@ -1,0 +1,102 @@
+{
+  "samples": [
+    {
+      "scenario": "Initial Trip Planning",
+      "transcript": "I want to plan a trip to Jaipur for 3 days starting January 15th. I'm interested in food and culture.",
+      "expectedIntent": "PLAN_TRIP",
+      "expectedEntities": {
+        "city": "Jaipur",
+        "duration": 3,
+        "startDate": "2024-01-15",
+        "interests": ["food", "culture"]
+      }
+    },
+    {
+      "scenario": "Providing Preferences",
+      "transcript": "I prefer a moderate pace and I'm really into history and architecture.",
+      "expectedIntent": "PROVIDE_PREFERENCE",
+      "expectedEntities": {
+        "pace": "moderate",
+        "interests": ["history", "architecture"]
+      }
+    },
+    {
+      "scenario": "Confirming Trip",
+      "transcript": "Yes, that looks good. Please create the itinerary.",
+      "expectedIntent": "CONFIRM",
+      "expectedEntities": {}
+    },
+    {
+      "scenario": "Editing Itinerary",
+      "transcript": "Can you remove the afternoon activity on day 2?",
+      "expectedIntent": "EDIT_ITINERARY",
+      "expectedEntities": {
+        "editTarget": {
+          "day": 2,
+          "block": "afternoon"
+        },
+        "editType": "remove"
+      }
+    },
+    {
+      "scenario": "Asking for Explanation",
+      "transcript": "Why did you pick City Palace?",
+      "expectedIntent": "EXPLAIN",
+      "expectedEntities": {
+        "poiName": "City Palace"
+      }
+    },
+    {
+      "scenario": "Clarification Request",
+      "transcript": "What time does the City Palace open?",
+      "expectedIntent": "CLARIFY",
+      "expectedEntities": {
+        "poiName": "City Palace",
+        "question": "opening time"
+      }
+    },
+    {
+      "scenario": "Multiple Preferences",
+      "transcript": "I want to visit museums, try local food, and see historical sites. I have 5 days available.",
+      "expectedIntent": "PROVIDE_PREFERENCE",
+      "expectedEntities": {
+        "interests": ["museums", "food", "history"],
+        "duration": 5
+      }
+    },
+    {
+      "scenario": "Pace Adjustment",
+      "transcript": "Actually, I'd like a more relaxed pace. Can you adjust the itinerary?",
+      "expectedIntent": "EDIT_ITINERARY",
+      "expectedEntities": {
+        "pace": "relaxed",
+        "editType": "relax"
+      }
+    },
+    {
+      "scenario": "Adding Activity",
+      "transcript": "Add a visit to Hawa Mahal in the morning of day 3.",
+      "expectedIntent": "EDIT_ITINERARY",
+      "expectedEntities": {
+        "editTarget": {
+          "day": 3,
+          "block": "morning"
+        },
+        "editType": "add",
+        "poiName": "Hawa Mahal"
+      }
+    },
+    {
+      "scenario": "Swapping Activities",
+      "transcript": "Can you swap the morning and afternoon activities on day 1?",
+      "expectedIntent": "EDIT_ITINERARY",
+      "expectedEntities": {
+        "editTarget": {
+          "day": 1
+        },
+        "editType": "swap"
+      }
+    }
+  ]
+}
+
