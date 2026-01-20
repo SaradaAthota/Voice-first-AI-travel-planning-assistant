@@ -155,12 +155,20 @@ export class ConversationStateManager {
 
     // Persist preferences to database
     if (updates.preferences && context.tripId) {
+      // Update both preferences JSONB and city column if city changed
+      const updateData: any = {
+        preferences: updated.preferences,
+        updated_at: new Date().toISOString(),
+      };
+      
+      // If city preference changed, also update the city column
+      if (updated.preferences.city && updated.preferences.city !== 'Unknown' && updated.preferences.city !== '') {
+        updateData.city = updated.preferences.city;
+      }
+      
       const { error } = await this.supabase
         .from('trips')
-        .update({
-          preferences: updated.preferences,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', context.tripId);
 
       if (error) {

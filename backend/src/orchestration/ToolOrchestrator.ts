@@ -59,30 +59,40 @@ export class ToolOrchestrator {
     // Decision logic based on state and intent
     switch (context.state) {
       case ConversationState.CONFIRMING:
-        if (intent === UserIntent.CONFIRM) {
-          // User confirmed - call POI Search and Itinerary Builder
-          decisions.push({
-            shouldCall: true,
-            toolName: 'poi_search',
-            toolInput: {
-              city: context.preferences.city,
-              interests: context.preferences.interests || [],
-              constraints: context.preferences.constraints || [],
-            },
-            reason: 'User confirmed preferences, need to search for POIs',
-          });
+        // Handle both CONFIRM and PLAN_TRIP intents in CONFIRMING state
+        if (intent === UserIntent.CONFIRM || intent === UserIntent.PLAN_TRIP) {
+          const hasCityAndDuration = context.preferences.city && context.preferences.duration;
+          if (hasCityAndDuration) {
+            // User confirmed or wants to plan - call POI Search and Itinerary Builder
+            decisions.push({
+              shouldCall: true,
+              toolName: 'poi_search',
+              toolInput: {
+                city: context.preferences.city,
+                interests: context.preferences.interests || [],
+                constraints: context.preferences.constraints || [],
+              },
+              reason: 'User confirmed/wants to plan, need to search for POIs',
+            });
 
-          decisions.push({
-            shouldCall: true,
-            toolName: 'itinerary_builder',
-            toolInput: {
-              city: context.preferences.city,
-              duration: context.preferences.duration,
-              startDate: context.preferences.startDate,
-              pace: context.preferences.pace || 'moderate',
-            },
-            reason: 'After POI search, build itinerary',
-          });
+            decisions.push({
+              shouldCall: true,
+              toolName: 'itinerary_builder',
+              toolInput: {
+                tripId: context.tripId, // Added tripId - required for saving itinerary
+                city: context.preferences.city,
+                duration: context.preferences.duration,
+                startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+                pace: context.preferences.pace || 'moderate',
+              },
+              reason: 'After POI search, build itinerary',
+            });
+          } else {
+            decisions.push({
+              shouldCall: false,
+              reason: 'CONFIRMING state but missing city or duration',
+            });
+          }
         }
         break;
 
@@ -114,16 +124,37 @@ export class ToolOrchestrator {
         break;
 
       case ConversationState.PLANNED:
-        // In planned state, only editing or explaining trigger tools
-        if (intent === UserIntent.EDIT_ITINERARY) {
+      case ConversationState.COLLECTING_PREFS:
+        // In planned/collecting state, editing triggers itinerary rebuild
+        if (intent === UserIntent.EDIT_ITINERARY && context.tripId && context.preferences.city) {
+          // For edits, we need to:
+          // 1. Load existing itinerary to get POIs and preferences
+          // 2. Apply edit instructions
+          // 3. Rebuild itinerary
+          decisions.push({
+            shouldCall: true,
+            toolName: 'poi_search', // Re-search POIs for the city
+            toolInput: {
+              city: context.preferences.city,
+              interests: context.preferences.interests || [],
+              constraints: context.preferences.constraints || [],
+              limit: 50,
+            },
+            reason: 'Re-searching POIs for itinerary edit',
+          });
           decisions.push({
             shouldCall: true,
             toolName: 'itinerary_builder',
             toolInput: {
               tripId: context.tripId,
+              city: context.preferences.city,
+              duration: context.preferences.duration || 2,
+              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+              pace: context.preferences.pace || 'moderate',
               editTarget: context.editTarget,
+              // Will be populated with POIs from poi_search
             },
-            reason: 'Editing planned itinerary',
+            reason: 'Rebuilding itinerary with edits',
           });
         }
         break;
@@ -131,7 +162,7 @@ export class ToolOrchestrator {
       case ConversationState.INIT:
       case ConversationState.COLLECTING_PREFS:
         const hasCityAndDuration = context.preferences.city && context.preferences.duration;
-        
+
         // If user confirms/finalizes and we have enough info, generate itinerary
         if (intent === UserIntent.CONFIRM && hasCityAndDuration) {
           // User wants to finalize - generate itinerary immediately
@@ -150,6 +181,7 @@ export class ToolOrchestrator {
             shouldCall: true,
             toolName: 'itinerary_builder',
             toolInput: {
+              tripId: context.tripId, // Added tripId - required for saving itinerary
               city: context.preferences.city,
               duration: context.preferences.duration,
               startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
@@ -234,9 +266,17 @@ export class ToolOrchestrator {
       // Prepare tool input - if itinerary_builder, add POIs from previous POI search
       let toolInput = decision.toolInput || {};
       if (decision.toolName === 'itinerary_builder' && poiSearchResults) {
+        // POI search returns { pois: [...], city: ..., totalFound: ... }
+        // Extract the pois array from the result
+        const poisArray = poiSearchResults.pois || (Array.isArray(poiSearchResults) ? poiSearchResults : []);
+        console.log('Injecting POIs into itinerary_builder:', {
+          poiSearchResultType: typeof poiSearchResults,
+          hasPoisProperty: 'pois' in poiSearchResults,
+          poisCount: Array.isArray(poisArray) ? poisArray.length : 0,
+        });
         toolInput = {
           ...toolInput,
-          pois: poiSearchResults,
+          pois: poisArray,
         };
       }
 
@@ -252,6 +292,12 @@ export class ToolOrchestrator {
       // Store POI search results for itinerary builder
       if (decision.toolName === 'poi_search' && result.output.success && result.output.data) {
         poiSearchResults = result.output.data;
+        console.log('POI search results stored:', {
+          hasPois: 'pois' in poiSearchResults,
+          poisCount: poiSearchResults.pois ? poiSearchResults.pois.length : 0,
+          city: poiSearchResults.city,
+          totalFound: poiSearchResults.totalFound,
+        });
       }
     }
 

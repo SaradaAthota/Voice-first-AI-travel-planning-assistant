@@ -309,36 +309,486 @@ This will start:
 - **n8n Workflow**: See `n8n/README.md`
 - **Component Documentation**: See README files in respective directories
 
-## 🚢 Deployment
+## 🚢 Deployment Guide
 
-### Backend (Render)
+This section provides step-by-step instructions for deploying the Voice-First AI Travel Planning Assistant to production.
 
-1. Connect GitHub repository
-2. Select `backend` directory
-3. Build command: `npm install && npm run build`
-4. Start command: `npm start`
-5. Add all environment variables from `backend/.env`
+### Prerequisites
 
-### Frontend (Vercel)
+Before deploying, ensure you have:
+- ✅ GitHub repository with your code
+- ✅ Supabase project created and configured
+- ✅ OpenAI API key
+- ✅ n8n instance (cloud or self-hosted)
+- ✅ Accounts on deployment platforms (Render, Vercel, Railway, etc.)
 
-1. Import project from GitHub
-2. Select `frontend` directory
-3. Framework: Vite
-4. Build command: `npm run build`
-5. Output directory: `dist`
-6. Add `VITE_API_URL` environment variable
+---
 
-### ChromaDB
+### Step 1: Deploy Backend (Render/Railway)
 
-Deploy ChromaDB container with persistent storage (Docker, Railway, or similar).
+#### Option A: Render (Recommended)
 
-### n8n (Railway)
+1. **Create New Service**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click **"New +"** → **"Web Service"**
+   - Connect your GitHub repository
 
-1. Create new Railway project
-2. Add n8n service
-3. Import workflow from `n8n/workflow-itinerary-pdf-email.json`
-4. Configure SMTP credentials
-5. Get webhook URL and add to backend environment variables
+2. **Configure Service**
+   - **Name**: `voice-travel-backend`
+   - **Region**: Choose closest to your users
+   - **Branch**: `main` (or your production branch)
+   - **Root Directory**: `backend`
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+
+3. **Environment Variables**
+   Add all variables from `backend/.env`:
+   ```
+   NODE_ENV=production
+   PORT=3000
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+   OPENAI_API_KEY=sk-your-openai-key
+   CHROMADB_URL=https://your-chromadb-instance.com
+   N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
+   BASE_URL=https://your-backend-url.onrender.com
+   ```
+
+4. **Deploy**
+   - Click **"Create Web Service"**
+   - Wait for build to complete
+   - Note your backend URL (e.g., `https://voice-travel-backend.onrender.com`)
+
+#### Option B: Railway
+
+1. **Create New Project**
+   - Go to [Railway Dashboard](https://railway.app)
+   - Click **"New Project"** → **"Deploy from GitHub repo"**
+   - Select your repository
+
+2. **Configure Service**
+   - Railway will auto-detect Node.js
+   - Set **Root Directory** to `backend`
+   - Add environment variables (same as Render above)
+
+3. **Deploy**
+   - Railway will automatically deploy
+   - Get your backend URL from the service settings
+
+---
+
+### Step 2: Deploy Frontend (Vercel/Netlify)
+
+#### Option A: Vercel (Recommended)
+
+1. **Import Project**
+   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
+   - Click **"Add New..."** → **"Project"**
+   - Import from GitHub repository
+
+2. **Configure Project**
+   - **Framework Preset**: Vite
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+   - **Install Command**: `npm install`
+
+3. **Environment Variables**
+   ```
+   VITE_API_URL=https://your-backend-url.onrender.com
+   ```
+   (Replace with your actual backend URL from Step 1)
+
+4. **Deploy**
+   - Click **"Deploy"**
+   - Wait for build to complete
+   - Note your frontend URL (e.g., `https://voice-travel.vercel.app`)
+
+#### Option B: Netlify
+
+1. **Create New Site**
+   - Go to [Netlify Dashboard](https://app.netlify.com)
+   - Click **"Add new site"** → **"Import an existing project"**
+   - Connect GitHub repository
+
+2. **Configure Build**
+   - **Base directory**: `frontend`
+   - **Build command**: `npm run build`
+   - **Publish directory**: `frontend/dist`
+
+3. **Environment Variables**
+   - Go to **Site settings** → **Environment variables**
+   - Add `VITE_API_URL` with your backend URL
+
+4. **Deploy**
+   - Click **"Deploy site"**
+   - Wait for build to complete
+
+---
+
+### Step 3: Deploy ChromaDB
+
+#### Option A: Railway (Recommended)
+
+1. **Create New Service**
+   - In your Railway project, click **"+ New"** → **"Database"** → **"Add ChromaDB"**
+   - Or use **"Deploy from GitHub"** and select a ChromaDB Docker image
+
+2. **Configure**
+   - Railway will automatically provision ChromaDB
+   - Note the service URL (e.g., `https://chromadb-production.up.railway.app`)
+
+3. **Update Backend Environment**
+   - Update `CHROMADB_URL` in your backend environment variables
+   - Use the Railway-provided URL
+
+#### Option B: Docker Container (Self-Hosted)
+
+1. **Deploy to VPS/Cloud**
+   ```bash
+   docker run -d \
+     --name chromadb \
+     -p 8000:8000 \
+     -v chromadb_data:/chroma/chroma \
+     chromadb/chroma:latest
+   ```
+
+2. **Update Backend Environment**
+   - Set `CHROMADB_URL` to your server's public IP/domain
+
+#### Option C: ChromaDB Cloud (Paid)
+
+1. **Sign Up**
+   - Go to [ChromaDB Cloud](https://www.trychroma.com)
+   - Create account and instance
+
+2. **Get Connection URL**
+   - Copy the connection URL from dashboard
+   - Update `CHROMADB_URL` in backend environment
+
+---
+
+### Step 4: Deploy n8n Workflow
+
+#### Option A: n8n Cloud (Easiest)
+
+1. **Create Account**
+   - Go to [n8n Cloud](https://www.n8n.io/cloud)
+   - Sign up for an account
+
+2. **Import Workflow**
+   - Go to **Workflows** → **Import from File**
+   - Upload `n8n/workflow-itinerary-pdf-email.json`
+
+3. **Configure Nodes**
+   - **Webhook Node**: Note the webhook URL
+   - **HTTP Request Node**: Update URL to your backend's PDF endpoint:
+     ```
+     https://your-backend-url.onrender.com/api/pdf/generate-pdf
+     ```
+   - **Send Email Node**: Configure SMTP credentials:
+     - **Host**: `smtp.gmail.com` (for Gmail)
+     - **Port**: `587`
+     - **User**: Your Gmail address
+     - **Password**: Gmail App Password (not regular password)
+     - **SSL/TLS**: OFF (for port 587)
+
+4. **Activate Workflow**
+   - Toggle workflow to **ACTIVE**
+   - Copy webhook URL
+
+5. **Update Backend Environment**
+   - Add `N8N_WEBHOOK_URL` to backend environment variables
+   - Use the webhook URL from step 4
+
+#### Option B: Railway (Self-Hosted)
+
+1. **Deploy n8n**
+   - Create new Railway service
+   - Use n8n Docker image: `n8nio/n8n`
+   - Add environment variables:
+     ```
+     N8N_BASIC_AUTH_ACTIVE=true
+     N8N_BASIC_AUTH_USER=admin
+     N8N_BASIC_AUTH_PASSWORD=your-secure-password
+     ```
+
+2. **Import Workflow**
+   - Access n8n at your Railway URL
+   - Import workflow and configure as above
+
+---
+
+### Step 5: Database Migration
+
+1. **Run Migration**
+   - Go to your Supabase project dashboard
+   - Navigate to **SQL Editor**
+   - Create new query
+   - Copy contents from `backend/migrations/001_initial_schema.sql`
+   - Click **"Run"** to execute
+
+2. **Verify Tables**
+   - Go to **Table Editor**
+   - Verify these tables exist:
+     - `trips`
+     - `itineraries`
+     - `transcripts`
+     - `eval_results`
+     - `mcp_logs`
+
+---
+
+### Step 6: Environment Variables Summary
+
+#### Backend Environment Variables
+
+```env
+# Application
+NODE_ENV=production
+PORT=3000
+BASE_URL=https://your-backend-url.onrender.com
+
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+
+# OpenAI
+OPENAI_API_KEY=sk-your-openai-key
+
+# ChromaDB
+CHROMADB_URL=https://your-chromadb-instance.com
+
+# n8n
+N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
+```
+
+#### Frontend Environment Variables
+
+```env
+VITE_API_URL=https://your-backend-url.onrender.com
+```
+
+---
+
+### Step 7: Post-Deployment Verification
+
+1. **Test Backend Health**
+   ```bash
+   curl https://your-backend-url.onrender.com/health
+   ```
+   Expected: `{"status":"ok"}`
+
+2. **Test Frontend**
+   - Open your frontend URL in browser
+   - Verify UI loads correctly
+   - Check browser console for errors
+
+3. **Test Voice Recording**
+   - Click microphone button
+   - Record a test message
+   - Verify transcription appears
+
+4. **Test Itinerary Generation**
+   - Say: "I want to visit Mumbai for 2 days"
+   - Verify itinerary is generated and displayed
+
+5. **Test PDF Email**
+   - After itinerary is generated, say: "share it to me"
+   - Provide email address
+   - Check inbox for PDF
+
+6. **Check Logs**
+   - Backend: Check Render/Railway logs for errors
+   - Frontend: Check browser console
+   - n8n: Check workflow execution logs
+
+---
+
+### Step 8: Production Checklist
+
+- [ ] Backend deployed and accessible
+- [ ] Frontend deployed and accessible
+- [ ] ChromaDB deployed and connected
+- [ ] n8n workflow imported and active
+- [ ] Database migrations run successfully
+- [ ] All environment variables configured
+- [ ] Backend health check passing
+- [ ] Frontend can connect to backend
+- [ ] Voice recording works
+- [ ] Transcription works
+- [ ] Itinerary generation works
+- [ ] PDF generation works
+- [ ] Email sending works
+- [ ] Citations display correctly
+- [ ] Error handling works
+
+---
+
+### Troubleshooting Deployment
+
+#### Backend Issues
+
+**Build Fails**:
+- Check Node.js version (requires 18+)
+- Verify all dependencies in `package.json`
+- Check build logs for specific errors
+
+**Runtime Errors**:
+- Verify all environment variables are set
+- Check database connection
+- Verify ChromaDB URL is accessible
+- Check OpenAI API key is valid
+
+#### Frontend Issues
+
+**Build Fails**:
+- Check Node.js version
+- Verify Vite configuration
+- Check for TypeScript errors
+
+**API Connection Errors**:
+- Verify `VITE_API_URL` is set correctly
+- Check CORS settings on backend
+- Verify backend is accessible from frontend domain
+
+#### n8n Issues
+
+**Workflow Not Triggering**:
+- Verify workflow is ACTIVE
+- Check webhook URL is correct
+- Verify backend can reach n8n webhook
+
+**Email Not Sending**:
+- Verify SMTP credentials
+- For Gmail: Use App Password (not regular password)
+- Check SSL/TLS settings (OFF for port 587)
+
+---
+
+### Deployment Architecture
+
+```
+┌─────────────────┐
+│   Frontend      │  (Vercel/Netlify)
+│   (Vite/React)  │
+└────────┬────────┘
+         │ HTTPS
+         ▼
+┌─────────────────┐
+│   Backend       │  (Render/Railway)
+│   (Express.js)  │
+└─────┬───────┬───┘
+      │       │
+      │       ├──► Supabase (Database)
+      │       │
+      │       ├──► ChromaDB (Vector DB)
+      │       │
+      │       └──► OpenAI API
+      │
+      ▼
+┌─────────────────┐
+│   n8n Workflow  │  (n8n Cloud/Railway)
+│   (PDF/Email)   │
+└─────────────────┘
+```
+
+---
+
+### Cost Estimation
+
+**Free Tier Options**:
+- **Render**: Free tier available (spins down after inactivity)
+- **Vercel**: Free tier for frontend
+- **Supabase**: Free tier (500MB database)
+- **n8n Cloud**: Free tier (limited executions)
+- **ChromaDB**: Self-hosted (free) or Railway free tier
+
+**Paid Options** (for production):
+- **Render**: $7/month (always-on backend)
+- **Vercel**: Pro plan for production
+- **Supabase**: Pro plan for larger database
+- **n8n Cloud**: Paid plans for more executions
+- **ChromaDB Cloud**: Paid plans available
+
+---
+
+### Security Considerations
+
+1. **Environment Variables**
+   - Never commit `.env` files to Git
+   - Use platform secrets management
+   - Rotate API keys regularly
+
+2. **API Keys**
+   - Use service role keys only in backend
+   - Never expose in frontend code
+   - Use environment variables
+
+3. **CORS**
+   - Configure CORS to allow only your frontend domain
+   - Remove wildcard CORS in production
+
+4. **Rate Limiting**
+   - Implement rate limiting on API endpoints
+   - Protect against abuse
+
+5. **HTTPS**
+   - Always use HTTPS in production
+   - Configure SSL certificates
+
+---
+
+### Monitoring & Maintenance
+
+1. **Logs**
+   - Monitor backend logs for errors
+   - Check n8n execution logs
+   - Monitor frontend error tracking
+
+2. **Health Checks**
+   - Set up health check endpoints
+   - Configure uptime monitoring
+   - Set up alerts for downtime
+
+3. **Database**
+   - Monitor database size
+   - Set up backups
+   - Monitor query performance
+
+4. **API Usage**
+   - Monitor OpenAI API usage
+   - Set up usage alerts
+   - Track costs
+
+---
+
+### Next Steps After Deployment
+
+1. **Domain Setup** (Optional)
+   - Configure custom domain for frontend
+   - Configure custom domain for backend
+   - Update CORS settings
+
+2. **Analytics** (Optional)
+   - Add analytics tracking
+   - Monitor user behavior
+   - Track conversion metrics
+
+3. **Performance Optimization**
+   - Enable CDN for static assets
+   - Optimize images
+   - Implement caching
+
+4. **Scaling**
+   - Monitor resource usage
+   - Scale up as needed
+   - Optimize database queries
 
 ## 🐛 Troubleshooting
 

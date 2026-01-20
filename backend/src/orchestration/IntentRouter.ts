@@ -80,10 +80,10 @@ Your job is to classify user messages into one of these intents:
 - PLAN_TRIP: User wants to plan a new trip (e.g., "Plan a 3-day trip to Jaipur")
 - PROVIDE_PREFERENCE: User providing preference information (e.g., "I like food and culture")
 - CONFIRM: User confirming constraints or preferences (e.g., "Yes, that's correct")
-- EDIT_ITINERARY: User wants to edit the itinerary (e.g., "Make Day 2 more relaxed", "Exchange day 1 and day 2")
+- EDIT_ITINERARY: User wants to edit the itinerary (e.g., "Make Day 2 more relaxed", "Exchange day 1 and day 2", "Remove X from day Y", "Swap day 1 and day 2"). IMPORTANT: If message contains edit keywords (remove, swap, change, modify) AND itinerary exists, classify as EDIT_ITINERARY even if it also mentions "share" or "send".
 - EXPLAIN: User asking for explanation (e.g., "Why did you pick this place?")
 - CLARIFY: User asking for clarification (e.g., "What do you mean?")
-- SEND_EMAIL: User wants to send itinerary via email (e.g., "Send me the itinerary via email", "Email me the PDF", "Send PDF to my email", "share it to me", "share the itinerary", "send it to my email", "mail it to me")
+- SEND_EMAIL: User wants to send itinerary via email (e.g., "Send me the itinerary via email", "Email me the PDF", "Send PDF to my email", "share it to me", "share the itinerary", "send it to my email", "mail it to me"). IMPORTANT: Only classify as SEND_EMAIL if NO edit keywords are present.
 
 Current conversation state: ${context.state}
 Current preferences: ${JSON.stringify(context.preferences, null, 2)}
@@ -94,7 +94,20 @@ Extract entities from the message:
 - startDate: Date or relative date (e.g., "next weekend")
 - interests: Array of interests (food, culture, history, etc.)
 - pace: relaxed, moderate, or fast
-- editTarget: For edits, which day/block is being edited
+- editTarget: For edits, extract as object with:
+  * day: Day number (1, 2, etc.) if mentioned (e.g., "day 1", "day one", "first day" = 1, "day 2", "day two", "second day" = 2)
+  * block: "morning", "afternoon", or "evening" if mentioned
+  * type: "remove" if "remove" or "delete" mentioned, "swap" if "swap" or "exchange" mentioned, "add" if "add" mentioned, "relax" if "relax" mentioned
+  * poiName: Name of POI to remove/add if mentioned (e.g., "ambassador visit", "Chandragiri fort")
+  
+IMPORTANT: If message contains "remove X from day Y", extract:
+  - type: "remove"
+  - day: Y (the day number)
+  - poiName: X (the POI name)
+  
+If message contains "swap day X and day Y", extract:
+  - type: "swap"
+  - day: X (the first day to swap)
 - email: Email address (for SEND_EMAIL intent, extract if mentioned)
 
 Return JSON with:
@@ -155,24 +168,42 @@ Classify the intent and extract entities.`;
   ): IntentClassification {
     const lowerMessage = message.toLowerCase();
 
-    // Simple keyword-based classification
-    if (lowerMessage.includes('plan') || lowerMessage.includes('trip')) {
+    // Check for EDIT_ITINERARY FIRST (highest priority) - if edits are mentioned, prioritize edits
+    const hasEditKeywords = lowerMessage.includes('remove') || 
+                           lowerMessage.includes('swap') || 
+                           lowerMessage.includes('change') || 
+                           lowerMessage.includes('modify') ||
+                           lowerMessage.includes('edit');
+    
+    if (hasEditKeywords) {
       return {
-        intent: UserIntent.PLAN_TRIP,
-        confidence: 0.7,
+        intent: UserIntent.EDIT_ITINERARY,
+        confidence: 0.9,
         entities: {},
         requiresClarification: false,
       };
     }
 
+    // Check for SEND_EMAIL (before PLAN_TRIP) - but only if no edit keywords
     if (
-      lowerMessage.includes('edit') ||
-      lowerMessage.includes('change') ||
-      lowerMessage.includes('swap') ||
-      lowerMessage.includes('modify')
+      (lowerMessage.includes('share') && (lowerMessage.includes('itinerary') || lowerMessage.includes('it') || lowerMessage.includes('to me'))) ||
+      (lowerMessage.includes('send') && (lowerMessage.includes('itinerary') || lowerMessage.includes('email') || lowerMessage.includes('mail'))) ||
+      (lowerMessage.includes('email') && lowerMessage.includes('itinerary')) ||
+      lowerMessage.includes('share it to me') ||
+      lowerMessage.includes('share the itinerary')
     ) {
       return {
-        intent: UserIntent.EDIT_ITINERARY,
+        intent: UserIntent.SEND_EMAIL,
+        confidence: 0.9,
+        entities: {},
+        requiresClarification: false,
+      };
+    }
+
+    // Simple keyword-based classification
+    if (lowerMessage.includes('plan') || lowerMessage.includes('trip')) {
+      return {
+        intent: UserIntent.PLAN_TRIP,
         confidence: 0.7,
         entities: {},
         requiresClarification: false,

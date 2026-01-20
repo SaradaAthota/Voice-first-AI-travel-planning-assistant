@@ -1,5 +1,5 @@
 {
-  "name": "Itinerary PDF Email",
+  "name": "Itinerary PDF Email (Fixed)",
   "nodes": [
     {
       "parameters": {
@@ -55,9 +55,9 @@
     },
     {
       "parameters": {
-        "fromEmail": "travel-assistant@example.com",
-        "toEmail": "={{ $json.email }}",
-        "subject": "Your Travel Itinerary - {{ $json.itinerary.city }}",
+        "fromEmail": "={{ $env.N8N_EMAIL_FROM || 'travel-assistant@example.com' }}",
+        "toEmail": "={{ $('Format HTML').item.json.email }}",
+        "subject": "Your Travel Itinerary - {{ $('Format HTML').item.json.itinerary.city }}",
         "emailType": "html",
         "message": "<p>Hello,</p><p>Please find your travel itinerary attached.</p><p>Enjoy your trip!</p>",
         "attachments": {
@@ -148,6 +148,6 @@
   "tags": [],
   "triggerCount": 1,
   "updatedAt": "2024-01-15T10:00:00.000Z",
-  "versionId": "1"
+  "versionId": "2"
 }
 

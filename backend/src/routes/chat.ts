@@ -7,6 +7,10 @@
 import { Router, Request, Response } from 'express';
 import { Orchestrator } from '../orchestration/Orchestrator';
 import { OrchestratorInput } from '../orchestration/types';
+import { poiSearchTool } from '../mcp-tools/poi-search';
+import { itineraryBuilderTool } from '../mcp-tools/itinerary-builder';
+import { getSupabaseClient } from '../db/supabase';
+import { ItineraryOutput } from '../mcp-tools/itinerary-builder/types';
 
 const router = Router();
 
@@ -16,6 +20,15 @@ let orchestratorInstance: Orchestrator | null = null;
 function getOrchestrator(): Orchestrator {
   if (!orchestratorInstance) {
     orchestratorInstance = new Orchestrator();
+    
+    // Register all MCP tools
+    orchestratorInstance.registerTool(poiSearchTool);
+    orchestratorInstance.registerTool(itineraryBuilderTool);
+    
+    console.log('Orchestrator initialized with tools:', {
+      poiSearch: !!poiSearchTool,
+      itineraryBuilder: !!itineraryBuilderTool,
+    });
   }
   return orchestratorInstance;
 }
@@ -53,7 +66,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const outputIntent = output.context.lastIntent;
     
     // Extract itinerary from tool calls (if itinerary_builder was called)
-    let itinerary = null;
+    let itinerary: ItineraryOutput | null = null;
     const allCitations: any[] = [];
     
     if (output.toolCalls) {
@@ -61,7 +74,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         (call) => call.toolName === 'itinerary_builder'
       );
       if (itineraryToolCall && itineraryToolCall.output.success) {
-        itinerary = itineraryToolCall.output.data;
+        itinerary = itineraryToolCall.output.data as ItineraryOutput;
         // Also collect citations from itinerary builder
         if (itineraryToolCall.output.citations && Array.isArray(itineraryToolCall.output.citations)) {
           allCitations.push(...itineraryToolCall.output.citations);
@@ -73,6 +86,30 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         if (call.output.citations && Array.isArray(call.output.citations)) {
           allCitations.push(...call.output.citations);
         }
+      }
+    }
+    
+    // If no itinerary from tool calls, check database
+    let hasItinerary = !!itinerary;
+    if (!itinerary && outputTripId) {
+      try {
+        const supabase = getSupabaseClient();
+        const { data: itineraryData } = await supabase
+          .from('itineraries')
+          .select('content')
+          .eq('trip_id', outputTripId)
+          .eq('is_active', true)
+          .order('version', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (itineraryData && itineraryData.content) {
+          itinerary = itineraryData.content as ItineraryOutput;
+          hasItinerary = true;
+          console.log('Found existing itinerary in database for tripId:', outputTripId);
+        }
+      } catch (error) {
+        console.error('Error checking for existing itinerary:', error);
       }
     }
     
@@ -88,7 +125,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     console.log('Orchestrator output:', {
       tripId: outputTripId,
       intent: outputIntent,
-      hasItinerary: !!itinerary,
+      hasItinerary,
       state: output.context.state,
       toolCallsCount: output.toolCalls?.length || 0,
       citationsCount: uniqueCitations.length,
@@ -101,7 +138,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       intent: outputIntent,
       response: output.response.text,
       itinerary,
-      hasItinerary: !!itinerary,
+      hasItinerary,
       citations: uniqueCitations,
     });
   } catch (error) {

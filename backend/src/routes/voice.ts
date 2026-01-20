@@ -83,12 +83,27 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
     // Just ensure the file has the correct extension
     // Skip FFmpeg conversion and send WebM directly
     console.log('Starting transcription...');
-    const sttResult = await transcribeAudio(req.file.buffer, mimeType);
-    console.log('Transcription result:', { 
-      text: sttResult.text, 
-      length: sttResult.text.length,
-      hasText: !!sttResult.text 
-    });
+    let sttResult;
+    try {
+      sttResult = await transcribeAudio(req.file.buffer, mimeType);
+      console.log('Transcription result:', { 
+        text: sttResult.text, 
+        length: sttResult.text.length,
+        hasText: !!sttResult.text 
+      });
+    } catch (transcriptionError) {
+      console.error('Voice upload error:', transcriptionError);
+      // Broadcast error to SSE clients
+      sendErrorMessage(sessionId, transcriptionError instanceof Error ? transcriptionError.message : 'Transcription failed');
+      
+      return res.status(500).json({
+        success: false,
+        error: transcriptionError instanceof Error ? transcriptionError.message : 'Transcription failed',
+        text: '',
+        chunkIndex: chunkIdx,
+        isFinal: final,
+      });
+    }
 
     // Create transcript update
     const update: TranscriptUpdate = {

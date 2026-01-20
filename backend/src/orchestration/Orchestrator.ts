@@ -37,6 +37,8 @@ import { PolicyGuards } from './PolicyGuards';
 import { getSupabaseClient } from '../db/supabase';
 import { POI } from '../mcp-tools/poi-search/types';
 import { ItineraryOutput } from '../mcp-tools/itinerary-builder/types';
+import { runItineraryEvaluations } from '../evaluations/eval-runner';
+import { EvalContext } from '../evaluations/types';
 
 export class Orchestrator {
   private stateManager: ConversationStateManager;
@@ -145,7 +147,49 @@ export class Orchestrator {
       nextState: orchestrationResult.nextState,
     });
 
-    // Step 5: Update state if tool calls changed it
+    // Step 5: Run evaluations if itinerary was generated
+    const itineraryToolCall = orchestrationResult.toolCalls.find(
+      (call) => call.toolName === 'itinerary_builder' && call.output.success
+    );
+    
+    if (itineraryToolCall && itineraryToolCall.output.data && context.tripId) {
+      try {
+        const itinerary = itineraryToolCall.output.data as ItineraryOutput;
+        console.log('Running evaluations for generated itinerary...');
+        
+        // Get itinerary ID from database (the most recent active one for this trip)
+        const { data: itineraryData, error: itineraryDataError } = await this.supabase
+          .from('itineraries')
+          .select('id')
+          .eq('trip_id', context.tripId)
+          .eq('is_active', true)
+          .order('version', { ascending: false })
+          .limit(1)
+          .maybeSingle(); // Use maybeSingle to avoid error if not found yet
+        
+        if (itineraryDataError && itineraryDataError.code !== 'PGRST116') {
+          console.error('Error fetching itinerary ID for evaluations:', itineraryDataError);
+        }
+        
+        console.log('Itinerary data for evaluations:', {
+          found: !!itineraryData,
+          itineraryId: itineraryData?.id,
+        });
+        
+        const evalContext: EvalContext = {
+          tripId: context.tripId,
+          itineraryId: itineraryData?.id,
+        };
+        
+        await runItineraryEvaluations(itinerary, evalContext);
+        console.log('Evaluations completed and saved to database');
+      } catch (evalError) {
+        console.error('Error running evaluations:', evalError);
+        // Don't fail the request if evaluations fail - just log the error
+      }
+    }
+
+    // Step 5b: Update state if tool calls changed it
     if (orchestrationResult.nextState) {
       context = await this.stateManager.transitionTo(
         context,
@@ -157,7 +201,14 @@ export class Orchestrator {
     // Step 6: Handle state transitions based on intent
     context = await this.handleStateTransition(context, intentClassification.intent);
 
-    // Step 7: Handle special intents (like SEND_EMAIL) before composing response
+    // Step 7: Handle special intents (like SEND_EMAIL and EDIT_ITINERARY) before composing response
+    // IMPORTANT: Handle EDIT_ITINERARY first if both edit and share are mentioned
+    if (intentClassification.intent === UserIntent.EDIT_ITINERARY) {
+      console.log('EDIT_ITINERARY intent detected - processing edits first');
+      // Edits are handled by tool orchestration above, so we continue to response composition
+      // The edited itinerary will be returned in toolCalls
+    }
+    
     if (intentClassification.intent === UserIntent.SEND_EMAIL) {
       console.log('SEND_EMAIL intent detected');
       // Extract email from message or entities
@@ -208,9 +259,37 @@ export class Orchestrator {
               toolCalls: orchestrationResult.toolCalls,
             };
           } else {
+            // Get error details from response
+            let errorDetails = '';
+            try {
+              const errorData = await pdfResponse.json();
+              errorDetails = errorData.error || errorData.details || '';
+            } catch {
+              const errorText = await pdfResponse.text();
+              errorDetails = errorText || '';
+            }
+            
+            console.error('PDF send error:', {
+              status: pdfResponse.status,
+              statusText: pdfResponse.statusText,
+              details: errorDetails,
+            });
+            
+            // Provide more specific error message
+            let errorMessage = `I encountered an issue sending the email`;
+            if (errorDetails.includes('N8N webhook URL not configured')) {
+              errorMessage = `Email service is not configured. Please contact support or use the "Send PDF via Email" button.`;
+            } else if (errorDetails.includes('Itinerary not found')) {
+              errorMessage = `I couldn't find your itinerary. Please generate it first.`;
+            } else if (errorDetails.includes('timeout')) {
+              errorMessage = `The email service took too long to respond. Please try again later or use the "Send PDF via Email" button.`;
+            } else {
+              errorMessage = `I encountered an issue sending the email (${pdfResponse.status}). Please try using the "Send PDF via Email" button in the itinerary display.`;
+            }
+            
             return {
               response: {
-                text: `I encountered an issue sending the email. Please try using the "Send PDF via Email" button in the itinerary display, or check that the email service is configured.`,
+                text: errorMessage,
                 state: context.state,
                 metadata: { tripId: context.tripId },
               },
@@ -498,6 +577,8 @@ export class Orchestrator {
         break;
 
       case ConversationState.PLANNED:
+      case ConversationState.COLLECTING_PREFS:
+        // Allow editing even in COLLECTING_PREFS if itinerary exists
         if (intent === 'EDIT_ITINERARY') {
           return this.stateManager.transitionTo(
             context,
@@ -510,6 +591,18 @@ export class Orchestrator {
             context,
             ConversationState.EXPLAINING,
             'User asking for explanation'
+          );
+        }
+        break;
+      
+      case ConversationState.INIT:
+        // If EDIT_ITINERARY is detected in INIT state but we have a tripId,
+        // it means we need to load the existing context and transition to EDITING
+        if (intent === 'EDIT_ITINERARY' && context.tripId) {
+          return this.stateManager.transitionTo(
+            context,
+            ConversationState.EDITING,
+            'User wants to edit existing itinerary'
           );
         }
         break;

@@ -66,14 +66,14 @@ function App() {
     
     // Only process if:
     // 1. Transcript is finalized (isFinal: true)
-    // 2. Transcript is substantial (more than 10 characters)
+    // 2. Transcript is substantial (at least 3 characters to avoid processing empty/single words)
     // 3. We have a session ID
     // 4. We haven't processed this exact transcript before
     // 5. We're not already processing another request
     if (
       transcriptIsFinal &&
       transcriptText && 
-      transcriptText.trim().length > 10 && 
+      transcriptText.trim().length >= 3 && 
       sessionId &&
       transcriptText !== processedTranscript &&
       !isProcessing
@@ -109,6 +109,7 @@ function App() {
             },
             body: JSON.stringify({
               message: transcriptText,
+              tripId: tripId || undefined, // Pass tripId so edits work on existing itinerary
             }),
           });
 
