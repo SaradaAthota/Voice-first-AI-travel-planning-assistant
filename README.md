@@ -568,6 +568,8 @@ Before deploying, ensure you have:
 
 ### Step 3: Deploy ChromaDB
 
+**📚 For detailed ChromaDB + RAG deployment guide, see:** [`backend/src/rag/DEPLOYMENT.md`](backend/src/rag/DEPLOYMENT.md)
+
 #### Option A: Railway (Recommended)
 
 1. **Create New Service**
