@@ -177,7 +177,12 @@ Still need: ${context.missingFields.join(', ')}`;
       case 'CONFIRMING':
         return `${basePrompt}
 You're confirming the trip details before generating the itinerary.
-Summarize what you understand and ask for confirmation.`;
+IMPORTANT: You MUST summarize what you understand and explicitly ask for confirmation before generating the itinerary.
+Do NOT generate the itinerary until the user confirms (says "yes", "correct", "that's right", "go ahead", etc.).
+Format your response as:
+1. Summarize the trip details you've collected (city, duration, start date, interests, pace)
+2. Ask: "Does this sound right? Should I go ahead and create your itinerary?"
+Wait for user confirmation before proceeding.`;
 
       case 'PLANNED':
         return `${basePrompt}
