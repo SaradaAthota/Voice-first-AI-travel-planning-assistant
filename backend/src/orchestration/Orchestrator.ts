@@ -212,9 +212,17 @@ export class Orchestrator {
     if (intentClassification.intent === UserIntent.SEND_EMAIL) {
       console.log('SEND_EMAIL intent detected');
       // Extract email from message or entities
-      const emailMatch = input.message.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
-      const email = emailMatch ? emailMatch[0] : intentClassification.entities?.email;
-      console.log('Extracted email:', email);
+      // Try multiple extraction methods
+      const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/i;
+      const emailMatch = input.message.match(emailRegex);
+      const emailFromMessage = emailMatch ? emailMatch[0] : null;
+      const emailFromEntities = intentClassification.entities?.email;
+      const email = emailFromMessage || emailFromEntities;
+      console.log('Extracted email:', { 
+        fromMessage: emailFromMessage, 
+        fromEntities: emailFromEntities, 
+        final: email 
+      });
       
       if (!email && context.tripId) {
         // No email found - ask user for email
