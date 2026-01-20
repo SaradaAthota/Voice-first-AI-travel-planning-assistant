@@ -2,7 +2,35 @@
 
 ## Issue: Vercel Not Recognizing GitHub Repository
 
-If Vercel is not recognizing your GitHub repository, follow these steps:
+If Vercel is not recognizing your GitHub repository or showing "Could not access the repository", follow these steps:
+
+## ⚠️ MOST COMMON FIX: GitHub Integration Access
+
+**90% of "Could not access repository" errors are due to GitHub access permissions.**
+
+### Quick Fix:
+
+1. **Go to Vercel Settings → Git**
+   - Visit: https://vercel.com/dashboard/settings/git
+   - Check if GitHub shows "Connected"
+
+2. **Reconnect GitHub**
+   - Click **Disconnect** (if connected)
+   - Click **Connect** next to GitHub
+   - Authorize Vercel
+   - **CRITICAL**: When asked for repository access, select:
+     - ✅ **"All repositories"** (recommended), OR
+     - ✅ Specifically select your repository
+
+3. **Verify Repository Access in GitHub**
+   - Go to: https://github.com/settings/installations
+   - Find "Vercel" → Click **Configure**
+   - Under "Repository access", ensure your repo is selected
+
+4. **Try Import Again**
+   - Go back to Vercel → Add New Project
+   - Repository should now appear in the list
+   - Or use search: Type `Voice-first-AI` and select from dropdown
 
 ## Step 1: Verify GitHub Integration
 
