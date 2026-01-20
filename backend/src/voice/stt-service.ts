@@ -123,7 +123,6 @@ export async function transcribeAudio(
         model: 'whisper-1',
         language: 'en', // Can be made configurable
         response_format: 'json',
-        timeout: 30000, // 30 second timeout
       });
 
       console.log(`Transcription successful on attempt ${attempt}`);
