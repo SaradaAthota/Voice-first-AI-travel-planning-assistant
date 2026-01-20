@@ -41,9 +41,16 @@ All required components are implemented:
    - Click **Add New Project**
 
 2. **Import Repository**
-   - Select your GitHub repository
+   - **If repository appears in list**: Select your GitHub repository
+   - **If repository NOT found**: See [Troubleshooting Guide](./VERCEL_TROUBLESHOOTING.md)
    - Choose the repository containing the frontend
    - Vercel will auto-detect it's a Vite project
+
+   **⚠️ Repository Not Showing?**
+   - Check GitHub integration is connected (Settings → Git)
+   - Try manual import: Click **Import Git Repository** and enter repository URL
+   - Example: `https://github.com/username/repository-name`
+   - Or use Vercel CLI (see Option B below)
 
 3. **Configure Project**
    - **Framework Preset**: Vite (auto-detected)
