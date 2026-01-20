@@ -35,7 +35,9 @@ export function ItineraryDisplay({ itinerary, tripId, className = '' }: Itinerar
     setMessage(null);
 
     try {
-      const response = await fetch('/api/itinerary/send-pdf', {
+      // Use VITE_API_URL in production, fallback to relative path for dev (Vite proxy)
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${apiBaseUrl}/api/itinerary/send-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
