@@ -17,7 +17,9 @@ export async function getItinerary(tripId: string): Promise<any> {
   
   if (!response.ok) {
     if (response.status === 404) {
-      return null; // No itinerary yet
+      // No itinerary yet - this is expected for new trips
+      // Don't log as error, just return null
+      return null;
     }
     throw new Error(`Failed to fetch itinerary: ${response.statusText}`);
   }

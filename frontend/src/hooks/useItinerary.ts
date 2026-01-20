@@ -32,9 +32,19 @@ export function useItinerary(tripId: string | null): UseItineraryReturn {
     try {
       const itineraryData = await getItinerary(tripId);
       setItinerary(itineraryData);
+      // Clear error if we successfully got null (no itinerary yet is expected)
+      if (itineraryData === null) {
+        setError(null);
+      }
     } catch (err) {
-      console.error('Error fetching itinerary:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch itinerary');
+      // Only log actual errors, not 404s (which are expected)
+      if (err instanceof Error && !err.message.includes('404')) {
+        console.error('Error fetching itinerary:', err);
+        setError(err.message);
+      } else {
+        // 404 is expected when no itinerary exists yet
+        setError(null);
+      }
     } finally {
       setLoading(false);
     }
