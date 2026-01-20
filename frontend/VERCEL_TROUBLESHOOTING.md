@@ -186,6 +186,19 @@ origin  https://github.com/username/repository-name.git (fetch)
 origin  https://github.com/username/repository-name.git (push)
 ```
 
+### ⚠️ Common Issue: Typo in Repository Name
+
+**Problem**: Repository URL has a typo (e.g., "Al" instead of "AI")
+
+**Solution**: 
+- Double-check the repository name spelling
+- Copy the exact URL from `git remote -v`
+- Ensure case sensitivity matches exactly
+
+**Example**:
+- ❌ Wrong: `Voice-first-Al-travel-planning-assistant` (typo: "Al")
+- ✅ Correct: `Voice-first-AI-travel-planning-assistant` (correct: "AI")
+
 ### Use Correct URL Format
 
 - **HTTPS**: `https://github.com/username/repository-name.git`
@@ -260,18 +273,24 @@ origin  https://github.com/username/repository-name.git (push)
 
 ## Example: Manual Import
 
+**⚠️ IMPORTANT**: Check for typos in repository name!
+
 If repository is `https://github.com/SaradaAthota/Voice-first-AI-travel-planning-assistant`:
 
 1. In Vercel, click **Add New Project**
 2. Click **Import Git Repository**
-3. Enter: `https://github.com/SaradaAthota/Voice-first-AI-travel-planning-assistant`
-4. Or enter: `SaradaAthota/Voice-first-AI-travel-planning-assistant`
+3. **Enter EXACT repository name** (watch for typos):
+   - ✅ Correct: `https://github.com/SaradaAthota/Voice-first-AI-travel-planning-assistant`
+   - ❌ Wrong: `https://github.com/SaradaAthota/Voice-first-Al-travel-planning-assistant` (typo: "Al")
+4. Or enter short form: `SaradaAthota/Voice-first-AI-travel-planning-assistant`
 5. Configure:
    - Framework: Vite
    - Root Directory: `frontend`
    - Build Command: `npm run build`
    - Output Directory: `dist`
 6. Click **Deploy**
+
+**Tip**: Copy the URL directly from `git remote get-url origin` to avoid typos
 
 ---
 
