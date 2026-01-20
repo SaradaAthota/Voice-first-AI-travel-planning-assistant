@@ -49,7 +49,7 @@ export function getPgPool(): Pool {
     });
 
     // Handle pool errors
-    pgPool.on('error', (err) => {
+    pgPool.on('error', (err: Error) => {
       console.error('Unexpected error on idle PostgreSQL client', err);
     });
   }

@@ -240,7 +240,34 @@ export class Orchestrator {
           
           // Use internal HTTP call to the send-pdf endpoint
           const { config } = await import('../config/env');
-          const baseUrl = process.env.BASE_URL || `http://localhost:${config.port}`;
+          const baseUrl = process.env.BASE_URL;
+          if (!baseUrl) {
+            if (config.env === 'production') {
+              throw new Error('BASE_URL environment variable is required in production');
+            }
+            // In development, use localhost fallback
+            const fallbackUrl = `http://localhost:${config.port}`;
+            console.warn(`BASE_URL not set, using fallback: ${fallbackUrl}`);
+            const pdfResponse = await fetch(`${fallbackUrl}/api/itinerary/send-pdf`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tripId: context.tripId, email }),
+            });
+            if (pdfResponse.ok) {
+              const pdfData = await pdfResponse.json();
+              return {
+                response: {
+                  text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
+                  state: context.state,
+                  metadata: { tripId: context.tripId },
+                },
+                context,
+                toolCalls: orchestrationResult.toolCalls,
+              };
+            } else {
+              throw new Error(`PDF send failed: ${pdfResponse.statusText}`);
+            }
+          }
           const pdfResponse = await fetch(`${baseUrl}/api/itinerary/send-pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

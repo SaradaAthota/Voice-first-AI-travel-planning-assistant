@@ -13,21 +13,51 @@ import pdfRoutes from './routes/pdf';
 const app: Express = express();
 
 // Middleware
-app.use(cors());
+// CORS configuration - restrict to allowed origins in production
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : process.env.FRONTEND_URL 
+    ? [process.env.FRONTEND_URL]
+    : config.env === 'production' 
+      ? [] // No default in production - must be explicitly set
+      : ['http://localhost:5173']; // Default for development
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, Postman, etc.) in development only
+    if (!origin && config.env === 'development') {
+      return callback(null, true);
+    }
+    
+    // Check if origin is allowed
+    if (origin && allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else if (origin) {
+      console.warn(`CORS: Blocked request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    } else {
+      callback(new Error('Origin not provided'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    timestamp: new Date().toISOString(),
+    service: 'backend',
     environment: config.env,
+    timestamp: new Date().toISOString(),
   });
 });
 
 // API routes
-app.get('/api', (req: Request, res: Response) => {
+app.get('/api', (_req: Request, res: Response) => {
   res.json({
     message: 'Voice-first AI Travel Planning Assistant API',
     version: '1.0.0',
@@ -56,7 +86,7 @@ app.use('/api/itinerary', itineraryRoutes);
 app.use('/api/pdf', pdfRoutes);
 
 // Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: any) => {
+app.use((err: Error, _req: Request, res: Response, _next: any) => {
   console.error('Error:', err);
   res.status(500).json({
     error: 'Internal server error',
@@ -65,10 +95,10 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 });
 
 // 404 handler
-app.use((req: Request, res: Response) => {
+app.use((_req: Request, res: Response) => {
   res.status(404).json({
     error: 'Not found',
-    path: req.path,
+    path: _req.path,
   });
 });
 
@@ -76,7 +106,17 @@ app.use((req: Request, res: Response) => {
 const server = app.listen(config.port, () => {
   console.log(`Server running on port ${config.port}`);
   console.log(`Environment: ${config.env}`);
-  console.log(`Health check: http://localhost:${config.port}/health`);
+  // Use BASE_URL if available, otherwise show localhost (dev only)
+  const healthUrl = process.env.BASE_URL 
+    ? `${process.env.BASE_URL}/health` 
+    : `http://localhost:${config.port}/health`;
+  console.log(`Health check: ${healthUrl}`);
+  if (config.env === 'production') {
+    console.log(`Allowed CORS origins: ${allowedOrigins.join(', ') || 'NONE - REQUIRED'}`);
+    if (allowedOrigins.length === 0) {
+      console.error('⚠️  WARNING: No CORS origins configured! Frontend requests will be blocked.');
+    }
+  }
 });
 
 // Graceful shutdown

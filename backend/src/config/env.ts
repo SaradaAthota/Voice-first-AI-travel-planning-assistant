@@ -60,7 +60,11 @@ export const config: Config = {
       }
     : undefined,
   chromadb: {
-    url: process.env.CHROMADB_URL || 'http://localhost:8000',
+    url: (() => {
+      const env = (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development';
+      const url = process.env.CHROMADB_URL || (env === 'production' ? undefined : 'http://localhost:8000');
+      return url as string | undefined;
+    })(),
   },
 };
 
@@ -71,6 +75,15 @@ if (config.env === 'production') {
   }
   if (!config.database.url) {
     throw new Error('Database URL is required in production');
+  }
+  if (!config.chromadb?.url) {
+    throw new Error('CHROMADB_URL is required in production');
+  }
+  if (!process.env.BASE_URL) {
+    throw new Error('BASE_URL is required in production');
+  }
+  if (!process.env.FRONTEND_URL && !process.env.ALLOWED_ORIGINS) {
+    throw new Error('FRONTEND_URL or ALLOWED_ORIGINS is required in production for CORS');
   }
 }
 

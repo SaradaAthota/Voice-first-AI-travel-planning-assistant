@@ -20,13 +20,26 @@ let chromaClient: ChromaClient | null = null;
 export function getChromaClient(): ChromaClient {
   if (!chromaClient) {
     // ChromaDB connection URL
-    // Default: localhost:8000 (for local Docker)
-    // Production: Use environment variable
-    const chromaUrl = process.env.CHROMADB_URL || 'http://localhost:8000';
+    // Production: Must be set via CHROMADB_URL environment variable
+    // Development: Defaults to localhost:8000 for local Docker
+    const chromaUrl = process.env.CHROMADB_URL;
     
-    chromaClient = new ChromaClient({
-      path: chromaUrl,
-    });
+    if (!chromaUrl) {
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        throw new Error('CHROMADB_URL environment variable is required in production');
+      }
+      // Development fallback
+      const fallbackUrl = 'http://localhost:8000';
+      console.warn(`CHROMADB_URL not set, using development fallback: ${fallbackUrl}`);
+      chromaClient = new ChromaClient({
+        path: fallbackUrl,
+      });
+    } else {
+      chromaClient = new ChromaClient({
+        path: chromaUrl,
+      });
+    }
   }
   return chromaClient;
 }

@@ -357,7 +357,7 @@ export class ItineraryBuilderTool implements MCPTool {
   private applyEdits(
     poisPerDay: POI[][],
     editTarget: ItineraryBuilderInput['editTarget'],
-    existingItinerary: ItineraryOutput
+    _existingItinerary: ItineraryOutput
   ): POI[][] {
     if (!editTarget) return poisPerDay;
 

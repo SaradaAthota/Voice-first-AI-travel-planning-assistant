@@ -18,6 +18,7 @@ export interface ItineraryBuilderInput {
     day?: number;                      // Which day to edit (1-indexed)
     block?: 'morning' | 'afternoon' | 'evening';
     type?: 'relax' | 'swap' | 'add' | 'remove' | 'reduce_travel';
+    poiName?: string;                  // POI name for remove/add operations
   };
 }
 
