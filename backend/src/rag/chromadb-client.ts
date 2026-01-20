@@ -27,8 +27,7 @@ export function getChromaClient(): ChromaClient {
     if (!chromaUrl) {
       const isProduction = process.env.NODE_ENV === 'production';
       if (isProduction) {
-        // In production, throw error but caller should handle gracefully
-        throw new Error('CHROMADB_URL environment variable is not set. RAG features are disabled. To enable RAG, deploy ChromaDB and set CHROMADB_URL.');
+        throw new Error('CHROMADB_URL environment variable is required in production. RAG is mandatory for this project.');
       }
       // Development fallback
       const fallbackUrl = 'http://localhost:8000';

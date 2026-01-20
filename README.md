@@ -94,14 +94,14 @@ DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/pos
 # OpenAI Configuration (REQUIRED)
 OPENAI_API_KEY=sk-your-openai-key
 
-# ChromaDB Configuration (defaults to localhost for dev)
+# ChromaDB Configuration (REQUIRED - for RAG features)
 CHROMADB_URL=http://localhost:8000
 
 # n8n Configuration (optional - for PDF/Email)
 N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
 ```
 
-**Note:** In production, `BASE_URL`, `FRONTEND_URL`, and `CHROMADB_URL` are REQUIRED and must NOT use localhost.
+**Note:** In production, `BASE_URL`, `FRONTEND_URL`, and `CHROMADB_URL` are REQUIRED and must NOT use localhost. RAG is mandatory for this project.
 
 #### Database Setup
 
@@ -412,7 +412,8 @@ Before deploying, ensure you have:
    # REQUIRED: OpenAI Configuration
    OPENAI_API_KEY=sk-your-openai-key
    
-   # REQUIRED: ChromaDB Configuration (NOT localhost!)
+   # Optional: ChromaDB Configuration (for RAG features)
+   # If not set, RAG will be disabled but app will still work
    CHROMADB_URL=https://your-chromadb-instance.com
    
    # Optional: n8n Configuration (for PDF/Email)
@@ -422,7 +423,7 @@ Before deploying, ensure you have:
    **Important Notes:**
    - `BASE_URL`: Must be your backend's public URL (e.g., `https://voice-travel-backend.onrender.com`)
    - `FRONTEND_URL`: Must be your frontend's public URL (for CORS)
-   - `CHROMADB_URL`: Must NOT be `localhost` - use your deployed ChromaDB instance URL
+   - `CHROMADB_URL`: REQUIRED - RAG is mandatory for this project
 
 4. **Deploy**
    - Click **"Create Web Service"**
@@ -466,7 +467,8 @@ Before deploying, ensure you have:
    # OpenAI Configuration (REQUIRED)
    OPENAI_API_KEY=sk-your-openai-key
    
-   # ChromaDB Configuration (REQUIRED - NOT localhost!)
+   # Optional: ChromaDB Configuration (for RAG features)
+   # If not set, RAG will be disabled but app will still work
    CHROMADB_URL=https://your-chromadb-instance.com
    
    # n8n Configuration (Optional)
@@ -476,7 +478,7 @@ Before deploying, ensure you have:
    **Important:**
    - `BASE_URL`: Will be available after first deployment. Update it after getting the Railway URL.
    - `DATABASE_URL`: Get from Supabase → Settings → Database → Connection string
-   - `CHROMADB_URL`: Must be your deployed ChromaDB instance (NOT localhost)
+   - `CHROMADB_URL`: REQUIRED - RAG is mandatory for this project
 
 4. **Deploy**
    - Railway will automatically start building
@@ -734,7 +736,7 @@ DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/pos
 # OpenAI (REQUIRED)
 OPENAI_API_KEY=sk-your-openai-key
 
-# ChromaDB (REQUIRED in production - NOT localhost!)
+# ChromaDB (REQUIRED - RAG is mandatory)
 CHROMADB_URL=https://your-chromadb-instance.com
 
 # n8n (Optional - only if using PDF/Email)
@@ -790,7 +792,7 @@ VITE_API_URL=https://your-backend-url.onrender.com
 
 - [ ] Backend deployed and accessible
 - [ ] Frontend deployed and accessible
-- [ ] ChromaDB deployed and connected
+- [ ] ChromaDB deployed and connected (REQUIRED - RAG is mandatory)
 - [ ] n8n workflow imported and active
 - [ ] Database migrations run successfully
 - [ ] All environment variables configured
@@ -818,7 +820,7 @@ VITE_API_URL=https://your-backend-url.onrender.com
 **Runtime Errors**:
 - Verify all environment variables are set
 - Check database connection
-- Verify ChromaDB URL is accessible
+- Verify ChromaDB URL is accessible (REQUIRED - RAG is mandatory)
 - Check OpenAI API key is valid
 
 #### Frontend Issues
