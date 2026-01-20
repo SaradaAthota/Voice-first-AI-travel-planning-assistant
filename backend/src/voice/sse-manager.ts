@@ -63,14 +63,31 @@ export function setupSSEConnection(
     },
   });
 
+  // Send keepalive every 30 seconds to prevent connection timeout
+  const keepaliveInterval = setInterval(() => {
+    if (client.response.writableEnded || client.response.destroyed) {
+      clearInterval(keepaliveInterval);
+      return;
+    }
+    try {
+      // Send comment line (SSE keepalive)
+      client.response.write(': keepalive\n\n');
+    } catch (error) {
+      console.error('Error sending SSE keepalive:', error);
+      clearInterval(keepaliveInterval);
+    }
+  }, 30000);
+
   // Handle client disconnect
   response.on('close', () => {
     console.log(`SSE client disconnected for session: ${sessionId}`);
+    clearInterval(keepaliveInterval);
     removeSSEClient(sessionId, client);
   });
 
   response.on('error', (err) => {
     console.error(`SSE client error for session: ${sessionId}`, err);
+    clearInterval(keepaliveInterval);
     removeSSEClient(sessionId, client);
   });
 }

@@ -21,17 +21,16 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const finalTranscriptRef = useRef<string>(''); // Track final transcript to prevent overwriting
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5;
+  const reconnectDelay = 1000; // Start with 1 second
 
-  useEffect(() => {
+  const connectSSE = () => {
     if (!sessionId) {
       console.log('useSSETranscript: No sessionId, skipping SSE connection');
       return;
     }
-
-    // Reset final transcript when session changes
-    finalTranscriptRef.current = '';
-    setIsFinal(false);
-    setTranscript('');
 
     // Close existing connection if any
     if (eventSourceRef.current) {
@@ -40,7 +39,13 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
       eventSourceRef.current = null;
     }
 
-    console.log('useSSETranscript: Creating SSE connection for session:', sessionId);
+    // Clear any pending reconnection
+    if (reconnectTimeoutRef.current !== null) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    console.log('useSSETranscript: Creating SSE connection for session:', sessionId, `(attempt ${reconnectAttemptsRef.current + 1})`);
     // Create SSE connection - use VITE_API_URL in production, fallback to relative path for dev
     const apiBaseUrl = import.meta.env.VITE_API_URL || '';
     const eventSource = new EventSource(`${apiBaseUrl}/api/voice/transcript/${sessionId}`);
@@ -49,6 +54,7 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
       console.log('SSE connection opened for session:', sessionId);
       setIsConnected(true);
       setError(null);
+      reconnectAttemptsRef.current = 0; // Reset on successful connection
     };
 
     eventSource.onmessage = (event) => {
@@ -90,7 +96,6 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
           console.log('SSE connection completed message received');
           // Don't close the connection - keep it open for potential retries
           // The backend will handle closing
-          // setIsConnected(false);
         }
       } catch (err) {
         console.error('Error parsing SSE message:', err, 'Raw data:', event.data);
@@ -99,21 +104,60 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
     };
 
     eventSource.onerror = (err) => {
-      console.error('SSE error:', err);
-      // Don't set error immediately - might be a temporary connection issue
-      // Only set error if connection is actually closed
+      console.error('SSE error:', err, 'ReadyState:', eventSource.readyState);
+      
       if (eventSource.readyState === EventSource.CLOSED) {
-        setError('Connection closed');
         setIsConnected(false);
+        
+        // Only attempt reconnection if we haven't exceeded max attempts
+        if (reconnectAttemptsRef.current < maxReconnectAttempts && !finalTranscriptRef.current) {
+          const delay = reconnectDelay * Math.pow(2, reconnectAttemptsRef.current); // Exponential backoff
+          reconnectAttemptsRef.current++;
+          
+          console.log(`SSE connection closed. Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          setError(`Connection lost. Reconnecting... (${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            connectSSE();
+          }, delay);
+        } else {
+          if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+            setError('Connection failed after multiple attempts. Please refresh the page.');
+          } else {
+            setError('Connection closed');
+          }
+        }
       }
     };
 
     eventSourceRef.current = eventSource;
+  };
+
+  useEffect(() => {
+    if (!sessionId) {
+      console.log('useSSETranscript: No sessionId, skipping SSE connection');
+      return;
+    }
+
+    // Reset final transcript when session changes
+    finalTranscriptRef.current = '';
+    setIsFinal(false);
+    setTranscript('');
+    reconnectAttemptsRef.current = 0;
+
+    // Connect SSE
+    connectSSE();
 
     // Cleanup
     return () => {
-      eventSource.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (reconnectTimeoutRef.current !== null) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
     };
   }, [sessionId]);
 
