@@ -75,24 +75,33 @@ npm install
 Create `.env` file in `backend/` directory:
 
 ```env
+# Application Configuration
 NODE_ENV=development
 PORT=3000
 
-# Supabase Configuration
+# Application URLs (for production, these are REQUIRED)
+BASE_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:5173
+# Optional: Use ALLOWED_ORIGINS for multiple frontend domains
+# ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3001
+
+# Supabase Configuration (REQUIRED)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 
-# OpenAI Configuration
+# OpenAI Configuration (REQUIRED)
 OPENAI_API_KEY=sk-your-openai-key
 
-# ChromaDB Configuration
+# ChromaDB Configuration (defaults to localhost for dev)
 CHROMADB_URL=http://localhost:8000
 
-# n8n Configuration (optional)
+# n8n Configuration (optional - for PDF/Email)
 N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
 ```
+
+**Note:** In production, `BASE_URL`, `FRONTEND_URL`, and `CHROMADB_URL` are REQUIRED and must NOT use localhost.
 
 #### Database Setup
 
@@ -313,9 +322,47 @@ This will start:
 
 This section provides step-by-step instructions for deploying the Voice-First AI Travel Planning Assistant to production.
 
+### ⚠️ CRITICAL: Database Setup MUST Be Done First
+
+**BEFORE deploying anything, you MUST set up the Supabase database!**
+
+The backend will fail with "table not found" errors if the database migration is not run first.
+
+**Step 0: Supabase Database Setup (REQUIRED - Do This First!)**
+
+1. **Go to Supabase Dashboard**
+   - Navigate to your Supabase project: https://supabase.com/dashboard
+   - Select your project
+
+2. **Run Database Migration**
+   - Click on **"SQL Editor"** in the left sidebar
+   - Click **"New query"**
+   - Copy the **entire contents** from `backend/migrations/001_initial_schema.sql`
+   - Paste into the SQL Editor
+   - Click **"Run"** (or press `Ctrl+Enter` / `Cmd+Enter`)
+
+3. **Verify Tables Created**
+   - Go to **"Table Editor"** in the left sidebar
+   - Verify these tables exist:
+     - ✅ `trips`
+     - ✅ `itineraries`
+     - ✅ `transcripts`
+     - ✅ `eval_results`
+     - ✅ `mcp_logs`
+
+4. **If Migration Fails**
+   - Check for syntax errors in the SQL
+   - Ensure you have the correct permissions
+   - Verify you're in the correct project
+
+**⚠️ DO NOT proceed to deployment until this step is complete!**
+
+---
+
 ### Prerequisites
 
 Before deploying, ensure you have:
+- ✅ **Supabase database migration completed** (Step 0 above)
 - ✅ GitHub repository with your code
 - ✅ Supabase project created and configured
 - ✅ OpenAI API key
@@ -343,40 +390,124 @@ Before deploying, ensure you have:
    - **Start Command**: `npm start`
 
 3. **Environment Variables**
-   Add all variables from `backend/.env`:
+   ⚠️ **REQUIRED in Production:** All variables below must be set. The backend will fail to start if any required variable is missing.
+   
+   Add all variables:
    ```
    NODE_ENV=production
    PORT=3000
+   
+   # REQUIRED: Application URLs
+   BASE_URL=https://your-backend-url.onrender.com
+   FRONTEND_URL=https://your-frontend-url.vercel.app
+   # Optional: If you have multiple frontend domains, use ALLOWED_ORIGINS instead
+   # ALLOWED_ORIGINS=https://your-frontend-url.vercel.app,https://www.yourdomain.com
+   
+   # REQUIRED: Supabase Configuration
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your-anon-key
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+   
+   # REQUIRED: OpenAI Configuration
    OPENAI_API_KEY=sk-your-openai-key
+   
+   # REQUIRED: ChromaDB Configuration (NOT localhost!)
    CHROMADB_URL=https://your-chromadb-instance.com
+   
+   # Optional: n8n Configuration (for PDF/Email)
    N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
-   BASE_URL=https://your-backend-url.onrender.com
    ```
+   
+   **Important Notes:**
+   - `BASE_URL`: Must be your backend's public URL (e.g., `https://voice-travel-backend.onrender.com`)
+   - `FRONTEND_URL`: Must be your frontend's public URL (for CORS)
+   - `CHROMADB_URL`: Must NOT be `localhost` - use your deployed ChromaDB instance URL
 
 4. **Deploy**
    - Click **"Create Web Service"**
    - Wait for build to complete
    - Note your backend URL (e.g., `https://voice-travel-backend.onrender.com`)
 
-#### Option B: Railway
+#### Option B: Railway (Recommended for Simplicity)
 
 1. **Create New Project**
-   - Go to [Railway Dashboard](https://railway.app)
-   - Click **"New Project"** → **"Deploy from GitHub repo"**
-   - Select your repository
+   - Go to [Railway Dashboard](https://railway.app/dashboard)
+   - Click **"New Project"**
+   - Select **"Deploy from GitHub repo"**
+   - Choose your repository: `Voice-first-AI-travel-planning-assistant`
+   - Click **"Deploy Now"**
 
 2. **Configure Service**
-   - Railway will auto-detect Node.js
-   - Set **Root Directory** to `backend`
-   - Add environment variables (same as Render above)
+   - **Service Name:** `voice-travel-backend` (or your preferred name)
+   - **Root Directory:** Set to `backend`
+   - **Build Command:** `npm install && npm run build` (auto-detected)
+   - **Start Command:** `npm start` (auto-detected)
+   - **Port:** Railway auto-assigns (uses `$PORT` env var)
 
-3. **Deploy**
-   - Railway will automatically deploy
-   - Get your backend URL from the service settings
+3. **Environment Variables**
+   ⚠️ **REQUIRED:** Add all variables in Railway dashboard → **Variables** tab:
+   
+   ```env
+   # Application
+   NODE_ENV=production
+   PORT=3000
+   
+   # Application URLs (REQUIRED - update BASE_URL after deployment)
+   BASE_URL=https://your-backend-service.up.railway.app
+   FRONTEND_URL=https://your-frontend-url.vercel.app
+   
+   # Supabase Configuration (REQUIRED)
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+   
+   # OpenAI Configuration (REQUIRED)
+   OPENAI_API_KEY=sk-your-openai-key
+   
+   # ChromaDB Configuration (REQUIRED - NOT localhost!)
+   CHROMADB_URL=https://your-chromadb-instance.com
+   
+   # n8n Configuration (Optional)
+   N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
+   ```
+   
+   **Important:**
+   - `BASE_URL`: Will be available after first deployment. Update it after getting the Railway URL.
+   - `DATABASE_URL`: Get from Supabase → Settings → Database → Connection string
+   - `CHROMADB_URL`: Must be your deployed ChromaDB instance (NOT localhost)
+
+4. **Deploy**
+   - Railway will automatically start building
+   - Monitor build logs in Railway dashboard
+   - Wait for deployment to complete (2-3 minutes)
+
+5. **Get Deployment URL**
+   - After deployment, Railway provides a public URL
+   - Format: `https://your-service-name.up.railway.app`
+   - **Update `BASE_URL` environment variable** with this URL
+   - Railway will auto-redeploy when env vars change
+
+6. **Verify Deployment**
+   ```bash
+   curl https://your-backend-service.up.railway.app/health
+   ```
+   
+   Expected response:
+   ```json
+   {
+     "status": "ok",
+     "service": "backend",
+     "environment": "production",
+     "timestamp": "2024-01-15T10:00:00.000Z"
+   }
+   ```
+
+**💡 Important Notes:**
+- **BASE_URL**: You won't know this until after first deployment. Deploy first, then Railway will show your service URL (e.g., `https://voice-travel-backend-production-abc123.up.railway.app`). Copy that URL and add it as `BASE_URL` in environment variables.
+- **FRONTEND_URL**: This is your frontend's public URL (from Vercel/Netlify). You'll get this after deploying the frontend in Step 2.
+- **Service Name**: Optional - Railway auto-generates one. Find it in Settings → Service Name if you want to change it.
 
 ---
 
@@ -397,10 +528,16 @@ Before deploying, ensure you have:
    - **Install Command**: `npm install`
 
 3. **Environment Variables**
+   ⚠️ **REQUIRED:** This variable is mandatory for production builds.
+   
    ```
    VITE_API_URL=https://your-backend-url.onrender.com
    ```
-   (Replace with your actual backend URL from Step 1)
+   
+   **Important:** 
+   - Replace with your actual backend URL from Step 1
+   - This must be set BEFORE building the frontend
+   - Without this, all API calls will fail in production
 
 4. **Deploy**
    - Click **"Deploy"**
@@ -485,10 +622,12 @@ Before deploying, ensure you have:
 
 3. **Configure Nodes**
    - **Webhook Node**: Note the webhook URL
-   - **HTTP Request Node**: Update URL to your backend's PDF endpoint:
-     ```
-     https://your-backend-url.onrender.com/api/pdf/generate-pdf
-     ```
+   - **HTTP Request Node**: 
+     - ⚠️ **IMPORTANT:** The workflow uses `BACKEND_URL` environment variable
+     - Go to n8n Settings → Environment Variables
+     - Add `BACKEND_URL` = `https://your-backend-url.onrender.com`
+     - The HTTP Request node will automatically use this: `={{ $env.BACKEND_URL }}/api/pdf/generate-pdf`
+     - **DO NOT hardcode the URL** - it must use the environment variable
    - **Send Email Node**: Configure SMTP credentials:
      - **Host**: `smtp.gmail.com` (for Gmail)
      - **Port**: `587`
@@ -503,6 +642,11 @@ Before deploying, ensure you have:
 5. **Update Backend Environment**
    - Add `N8N_WEBHOOK_URL` to backend environment variables
    - Use the webhook URL from step 4
+   
+   **⚠️ Troubleshooting:**
+   - If PDF generation fails, check that `BACKEND_URL` is set in n8n environment variables
+   - Verify the backend URL is accessible from n8n (check firewall/network settings)
+   - Check n8n execution logs for detailed error messages
 
 #### Option B: Railway (Self-Hosted)
 
@@ -522,23 +666,19 @@ Before deploying, ensure you have:
 
 ---
 
-### Step 5: Database Migration
+### Step 5: Verify Database Migration
 
-1. **Run Migration**
-   - Go to your Supabase project dashboard
-   - Navigate to **SQL Editor**
-   - Create new query
-   - Copy contents from `backend/migrations/001_initial_schema.sql`
-   - Click **"Run"** to execute
+⚠️ **This should already be done in Step 0!** If you skipped it, go back and complete it now.
 
-2. **Verify Tables**
-   - Go to **Table Editor**
-   - Verify these tables exist:
-     - `trips`
-     - `itineraries`
-     - `transcripts`
-     - `eval_results`
-     - `mcp_logs`
+**Verification Checklist:**
+- [ ] All 5 tables exist in Supabase Table Editor
+- [ ] Can query tables from SQL Editor
+- [ ] No errors when testing backend connection
+
+**If migration was not done:**
+- The backend will fail with "table not found" errors
+- Go back to **Step 0** and complete the migration
+- Restart the backend after migration
 
 ---
 
@@ -546,27 +686,37 @@ Before deploying, ensure you have:
 
 #### Backend Environment Variables
 
+⚠️ **All variables marked as REQUIRED must be set in production. The backend will fail to start if any are missing.**
+
 ```env
-# Application
+# Application (REQUIRED)
 NODE_ENV=production
 PORT=3000
-BASE_URL=https://your-backend-url.onrender.com
 
-# Supabase
+# Application URLs (REQUIRED in production)
+BASE_URL=https://your-backend-url.onrender.com
+FRONTEND_URL=https://your-frontend-url.vercel.app
+# Optional: Use ALLOWED_ORIGINS if you have multiple frontend domains
+# ALLOWED_ORIGINS=https://your-frontend-url.vercel.app,https://www.yourdomain.com
+
+# Supabase (REQUIRED)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 
-# OpenAI
+# OpenAI (REQUIRED)
 OPENAI_API_KEY=sk-your-openai-key
 
-# ChromaDB
+# ChromaDB (REQUIRED in production - NOT localhost!)
 CHROMADB_URL=https://your-chromadb-instance.com
 
-# n8n
+# n8n (Optional - only if using PDF/Email)
 N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
 ```
+
+**n8n Environment Variables (Required if using n8n):**
+- `BACKEND_URL` = `https://your-backend-url.onrender.com` (must be set in n8n, not backend)
 
 #### Frontend Environment Variables
 
@@ -653,9 +803,11 @@ VITE_API_URL=https://your-backend-url.onrender.com
 - Check for TypeScript errors
 
 **API Connection Errors**:
-- Verify `VITE_API_URL` is set correctly
-- Check CORS settings on backend
-- Verify backend is accessible from frontend domain
+- ⚠️ **CRITICAL:** Verify `VITE_API_URL` is set correctly in production
+- Check browser console for CORS errors
+- Verify backend `FRONTEND_URL` or `ALLOWED_ORIGINS` includes your frontend domain
+- Check that backend is accessible from frontend domain
+- Verify all API calls use absolute URLs (not relative paths)
 
 #### n8n Issues
 
@@ -664,10 +816,18 @@ VITE_API_URL=https://your-backend-url.onrender.com
 - Check webhook URL is correct
 - Verify backend can reach n8n webhook
 
+**PDF Generation Fails**:
+- ⚠️ **CRITICAL:** Verify `BACKEND_URL` is set in n8n environment variables (Settings → Environment Variables)
+- Check that backend URL is accessible from n8n
+- Verify HTTP Request node uses `={{ $env.BACKEND_URL }}/api/pdf/generate-pdf`
+- Check backend logs for PDF generation errors
+- Verify backend `/api/pdf/generate-pdf` endpoint is working
+
 **Email Not Sending**:
 - Verify SMTP credentials
 - For Gmail: Use App Password (not regular password)
 - Check SSL/TLS settings (OFF for port 587)
+- Verify email node receives PDF data correctly
 
 ---
 
