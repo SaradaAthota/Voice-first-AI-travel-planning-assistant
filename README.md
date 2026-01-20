@@ -599,16 +599,42 @@ Before deploying, ensure you have:
 #### Option A: Railway (Recommended)
 
 1. **Create New Service**
-   - In your Railway project, click **"+ New"** → **"Database"** → **"Add ChromaDB"**
-   - Or use **"Deploy from GitHub"** and select a ChromaDB Docker image
+   - In your Railway project, click **"+ New"** → **"Empty Service"**
+   - Name it: `chromadb` (or `voice-travel-chromadb`)
 
-2. **Configure**
-   - Railway will automatically provision ChromaDB
-   - Note the service URL (e.g., `https://chromadb-production.up.railway.app`)
+2. **Deploy ChromaDB**
+   - Go to **Settings** → **Deploy**
+   - Under **"Deploy Command"**, select **"Docker"**
+   - In **"Docker Image"**, enter: `chromadb/chroma:latest`
+   - Click **"Deploy"**
 
-3. **Update Backend Environment**
-   - Update `CHROMADB_URL` in your backend environment variables
-   - Use the Railway-provided URL
+3. **Set Environment Variables** (in ChromaDB service)
+   - Go to **Variables** tab
+   - Add:
+     ```
+     IS_PERSISTENT=TRUE
+     ANONYMIZED_TELEMETRY=FALSE
+     ```
+
+4. **Get the Service URL**
+   - Go to **Settings** → **Networking**
+   - Click **"Generate Domain"** if not already generated
+   - Note the domain (e.g., `chromadb-production.up.railway.app`)
+   - **Full URL**: `https://chromadb-production.up.railway.app`
+
+5. **Verify ChromaDB is Running**
+   ```bash
+   curl https://chromadb-production.up.railway.app/api/v1/heartbeat
+   ```
+   Expected: `{"nanosecond heartbeat": <timestamp>}`
+
+6. **Update Backend Environment**
+   - Go to your **backend service** in Railway
+   - **Variables** tab → **"+ New Variable"**
+   - **Name**: `CHROMADB_URL`
+   - **Value**: `https://chromadb-production.up.railway.app` (use your actual domain)
+   - Click **"Add"**
+   - Railway will automatically redeploy your backend
 
 #### Option B: Docker Container (Self-Hosted)
 
