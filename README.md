@@ -551,7 +551,16 @@ Before deploying, ensure you have:
 
 5. **Post-Deployment Steps**
    - **Set Environment Variable**: Go to Settings → Environment Variables, add `VITE_API_URL` (see step 3 above)
-   - **Update Backend CORS**: In Railway backend, add `FRONTEND_URL=https://your-app.vercel.app`
+   - **Get Frontend URL**: 
+     - In Vercel dashboard, your project page shows the deployment URL at the top
+     - Example: `https://voice-travel-frontend.vercel.app` or `https://your-project-name.vercel.app`
+     - Copy this URL (it's also shown in the "Domains" section)
+   - **Update Backend CORS**: 
+     - Go to Railway dashboard → Your backend project → Variables tab
+     - Add new variable: `FRONTEND_URL`
+     - Value: Your Vercel URL (e.g., `https://your-app.vercel.app`)
+     - **⚠️ IMPORTANT**: No trailing slash
+     - Railway will auto-redeploy after adding the variable
    - **Test Frontend**: Visit your Vercel URL and test all features
    
    **Troubleshooting**:
