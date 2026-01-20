@@ -38,8 +38,16 @@ function getEnvNumber(name: string, defaultValue: number): number {
   return value ? parseInt(value, 10) : defaultValue;
 }
 
+function getEnvMode(): 'development' | 'production' | 'test' {
+  const env = process.env.NODE_ENV;
+  if (env === 'development' || env === 'production' || env === 'test') {
+    return env;
+  }
+  return 'development';
+}
+
 export const config: Config = {
-  env: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development',
+  env: getEnvMode(),
   port: getEnvNumber('PORT', 3000),
   supabase: {
     url: getEnvVar('SUPABASE_URL'),
@@ -61,9 +69,15 @@ export const config: Config = {
     : undefined,
   chromadb: {
     url: (() => {
-      const env = (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development';
-      const url = process.env.CHROMADB_URL || (env === 'production' ? undefined : 'http://localhost:8000');
-      return url as string | undefined;
+      const env = getEnvMode();
+      const url = process.env.CHROMADB_URL;
+      if (url) {
+        return url;
+      }
+      if (env === 'production') {
+        return undefined;
+      }
+      return 'http://localhost:8000';
     })(),
   },
 };
