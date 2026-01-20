@@ -90,8 +90,11 @@ if (config.env === 'production') {
   if (!config.database.url) {
     throw new Error('Database URL is required in production');
   }
+  // ChromaDB is optional - RAG will gracefully fail if not available
   if (!config.chromadb?.url) {
-    throw new Error('CHROMADB_URL is required in production');
+    console.warn('⚠️  WARNING: CHROMADB_URL not set. RAG features will be disabled.');
+    console.warn('   The application will work without RAG, but city guidance and explanations will be limited.');
+    console.warn('   To enable RAG: Deploy ChromaDB and set CHROMADB_URL environment variable.');
   }
   if (!process.env.BASE_URL) {
     throw new Error('BASE_URL is required in production');

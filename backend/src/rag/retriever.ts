@@ -73,40 +73,56 @@ export async function retrieveChunks(
   topK: number = DEFAULT_TOP_K,
   similarityThreshold: number = SIMILARITY_THRESHOLD
 ): Promise<RetrievalResult> {
-  // Step 1: Embed the query
-  const queryEmbedding = await generateEmbedding(query);
+  try {
+    // Step 1: Embed the query
+    const queryEmbedding = await generateEmbedding(query);
 
-  // Step 2: Query ChromaDB
-  const rawResults = await querySimilarChunks(
-    queryEmbedding,
-    city,
-    section,
-    topK * 2 // Retrieve more to filter by threshold
-  );
+    // Step 2: Query ChromaDB
+    const rawResults = await querySimilarChunks(
+      queryEmbedding,
+      city,
+      section,
+      topK * 2 // Retrieve more to filter by threshold
+    );
 
-  // Step 3: Convert distance to similarity and filter by threshold
-  const chunks: RetrievedChunk[] = rawResults
-    .map(result => ({
-      text: result.text,
-      metadata: result.metadata,
-      similarity: 1 - result.distance, // Convert distance to similarity
-      distance: result.distance,
-    }))
-    .filter(chunk => chunk.distance <= similarityThreshold) // Filter by threshold
-    .slice(0, topK); // Take top-k after filtering
+    // Step 3: Convert distance to similarity and filter by threshold
+    const chunks: RetrievedChunk[] = rawResults
+      .map(result => ({
+        text: result.text,
+        metadata: result.metadata,
+        similarity: 1 - result.distance, // Convert distance to similarity
+        distance: result.distance,
+      }))
+      .filter(chunk => chunk.distance <= similarityThreshold) // Filter by threshold
+      .slice(0, topK); // Take top-k after filtering
 
-  // Step 4: Generate citations from metadata
-  const citations = generateCitations(chunks);
+    // Step 4: Generate citations from metadata
+    const citations = generateCitations(chunks);
 
-  // Step 5: Return result
-  return {
-    chunks,
-    citations,
-    hasData: chunks.length > 0,
-    query,
-    city,
-    section,
-  };
+    // Step 5: Return result
+    return {
+      chunks,
+      citations,
+      hasData: chunks.length > 0,
+      query,
+      city,
+      section,
+    };
+  } catch (error) {
+    // Handle ChromaDB connection errors gracefully
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('ChromaDB retrieval failed, continuing without RAG data:', errorMessage);
+    
+    // Return empty result - don't fail the entire request
+    return {
+      chunks: [],
+      citations: [],
+      hasData: false,
+      query,
+      city,
+      section,
+    };
+  }
 }
 
 /**

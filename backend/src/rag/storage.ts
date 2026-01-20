@@ -79,34 +79,44 @@ export async function querySimilarChunks(
   limit: number = 5,
   collectionName: string = 'travel_guides'
 ): Promise<Array<{ text: string; metadata: any; distance: number }>> {
-  const collection = await getOrCreateCollection(collectionName);
+  try {
+    const collection = await getOrCreateCollection(collectionName);
 
-  const where: any = {};
-  if (city) {
-    where.city = city;
-  }
-  if (section) {
-    where.section = section;
-  }
+    const where: any = {};
+    if (city) {
+      where.city = city;
+    }
+    if (section) {
+      where.section = section;
+    }
 
-  const results = await collection.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults: limit,
-    where: where,
-  });
+    const results = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: limit,
+      where: where,
+    });
 
-  if (!results.documents || results.documents.length === 0) {
+    if (!results.documents || results.documents.length === 0) {
+      return [];
+    }
+
+    const documents = results.documents[0];
+    const metadatas = results.metadatas?.[0] || [];
+    const distances = results.distances?.[0] || [];
+
+    return documents.map((doc, index) => ({
+      text: doc || '',
+      metadata: metadatas[index] || {},
+      distance: distances[index] || 0,
+    }));
+  } catch (error) {
+    // Handle ChromaDB connection errors gracefully
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('ChromaDB query failed, returning empty results:', errorMessage);
+    
+    // Return empty array - don't fail the entire request
+    // The application will continue without RAG data
     return [];
   }
-
-  const documents = results.documents[0];
-  const metadatas = results.metadatas?.[0] || [];
-  const distances = results.distances?.[0] || [];
-
-  return documents.map((doc, index) => ({
-    text: doc || '',
-    metadata: metadatas[index] || {},
-    distance: distances[index] || 0,
-  }));
 }
 

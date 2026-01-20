@@ -99,8 +99,10 @@ export class ResponseComposer {
           }
         }
       } catch (error) {
-        console.error('Error retrieving RAG data for city guidance:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn('RAG data retrieval failed (continuing without RAG):', errorMessage);
         // Continue without RAG data - don't fail the response
+        // The application will work without RAG, just without enhanced city guidance
       }
     }
 

@@ -153,7 +153,9 @@ export class ExplanationComposer {
         hasData: ragResult.hasData,
       };
     } catch (error) {
-      console.error('RAG retrieval error:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('RAG retrieval failed (continuing without RAG):', errorMessage);
+      // Return empty result - don't fail the explanation
       return { chunks: [], citations: [], hasData: false };
     }
   }
