@@ -2,7 +2,7 @@
  * Main App Component
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MicButton } from './components/MicButton';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ItineraryDisplay } from './components/ItineraryDisplay';
@@ -12,7 +12,10 @@ import { useSSETranscript } from './hooks/useSSETranscript';
 import { useItinerary } from './hooks/useItinerary';
 import { ItineraryOutput, Citation } from './types/itinerary';
 
-const API_BASE_URL = '/api/voice';
+// Use VITE_API_URL in production, fallback to relative path for dev (Vite proxy)
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api/voice` 
+  : '/api/voice';
 
 function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -101,8 +104,13 @@ function App() {
         console.log('Message:', transcriptText);
         console.log('Request timestamp:', requestTimestamp);
         
+        // Use VITE_API_URL in production, fallback to relative path for dev (Vite proxy)
+        const chatApiUrl = import.meta.env.VITE_API_URL 
+          ? `${import.meta.env.VITE_API_URL}/api/chat` 
+          : '/api/chat';
+        
         try {
-          const response = await fetch('/api/chat', {
+          const response = await fetch(chatApiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

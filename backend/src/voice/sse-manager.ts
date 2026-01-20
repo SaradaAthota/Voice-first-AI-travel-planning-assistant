@@ -11,7 +11,6 @@
 
 import { Response } from 'express';
 import { TranscriptUpdate, SSEMessage } from './types';
-import { getSession } from './transcript-manager';
 
 /**
  * SSE client connection

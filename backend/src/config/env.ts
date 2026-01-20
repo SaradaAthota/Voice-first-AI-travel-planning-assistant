@@ -21,7 +21,7 @@ interface Config {
     apiKey: string;
   };
   chromadb?: {
-    url: string;
+    url: string | undefined;
   };
 }
 
@@ -51,13 +51,13 @@ export const config: Config = {
   },
   openai: process.env.OPENAI_API_KEY
     ? {
-        apiKey: getEnvVar('OPENAI_API_KEY'),
-      }
+      apiKey: getEnvVar('OPENAI_API_KEY'),
+    }
     : undefined,
   elevenlabs: process.env.ELEVENLABS_API_KEY
     ? {
-        apiKey: getEnvVar('ELEVENLABS_API_KEY'),
-      }
+      apiKey: getEnvVar('ELEVENLABS_API_KEY'),
+    }
     : undefined,
   chromadb: {
     url: (() => {

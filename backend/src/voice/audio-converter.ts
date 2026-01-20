@@ -8,7 +8,6 @@ import ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
-import { promisify } from 'util';
 
 // Set FFmpeg path
 if (ffmpegPath) {

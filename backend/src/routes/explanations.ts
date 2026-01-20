@@ -5,7 +5,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { Orchestrator } from '../orchestration/Orchestrator';
 import { ExplanationRequestInput, ExplanationResponse } from '../orchestration/explanation-types';
 import { ExplanationComposer } from '../orchestration/ExplanationComposer';
 import { ConversationStateManager } from '../orchestration/ConversationStateManager';
@@ -13,16 +12,7 @@ import { POI } from '../mcp-tools/poi-search/types';
 
 const router = Router();
 
-// Create orchestrator instance (singleton pattern)
-let orchestratorInstance: Orchestrator | null = null;
-
-function getOrchestrator(): Orchestrator {
-  if (!orchestratorInstance) {
-    orchestratorInstance = new Orchestrator();
-    // Register tools here when available
-  }
-  return orchestratorInstance;
-}
+// Orchestrator is available for future use if needed
 
 /**
  * POST /api/explanations
@@ -95,11 +85,13 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     res.json(explanationResponse);
+    return;
   } catch (error) {
     console.error('Explanation error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 

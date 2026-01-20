@@ -10,10 +10,9 @@
  */
 
 import {
-  ItineraryDay,
   DayBlock,
-  Activity,
   TimeBlock,
+  Activity,
 } from '../itinerary-builder/types';
 import { POI } from '../poi-search/types';
 import { EditType, EditParams } from './types';
@@ -32,7 +31,8 @@ export function applyEditToBlock(
   if (!block) {
     // If block doesn't exist and we're adding, create it
     if (editType === 'add' && editParams.poiToAdd) {
-      return createNewBlock(block?.block || 'afternoon', [editParams.poiToAdd], pace);
+      const blockType = (block as DayBlock | undefined)?.block || 'afternoon';
+      return createNewBlock(blockType, [editParams.poiToAdd], pace);
     }
     return undefined;
   }
@@ -59,9 +59,8 @@ export function applyEditToBlock(
 function relaxBlock(
   block: DayBlock,
   editParams: EditParams,
-  pace: 'relaxed' | 'moderate' | 'fast'
+  _pace: 'relaxed' | 'moderate' | 'fast'
 ): DayBlock {
-  const config = getPaceConfig(pace);
   let activities = [...block.activities];
 
   // If reducing activities, remove the last one

@@ -134,8 +134,14 @@ async function main() {
   }
 
   const cities = citiesArg.split(',').map(c => c.trim());
-  const sources = sourcesArg
-    ? (sourcesArg.split(',').map(s => s.trim()) as Array<'wikivoyage' | 'wikipedia'>)
+  const sources: Array<'wikivoyage' | 'wikipedia'> = sourcesArg
+    ? sourcesArg.split(',').map(s => {
+        const trimmed = s.trim().toLowerCase();
+        if (trimmed === 'wikivoyage' || trimmed === 'wikipedia') {
+          return trimmed as 'wikivoyage' | 'wikipedia';
+        }
+        throw new Error(`Invalid source: ${trimmed}. Must be 'wikivoyage' or 'wikipedia'`);
+      })
     : ['wikivoyage', 'wikipedia'];
 
   console.log('RAG Ingestion Pipeline');

@@ -63,6 +63,7 @@ router.post('/generate-pdf', async (req: Request, res: Response) => {
       
       // Send PDF
       res.send(pdf);
+      return;
     } finally {
       // Always close browser
       await browser.close();
@@ -73,6 +74,7 @@ router.post('/generate-pdf', async (req: Request, res: Response) => {
       error: 'PDF generation failed',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
+    return;
   }
 });
 

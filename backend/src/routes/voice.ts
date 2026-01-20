@@ -25,7 +25,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     // Accept audio files
     if (file.mimetype.startsWith('audio/')) {
       cb(null, true);
@@ -137,6 +137,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       chunkIndex: chunkIdx,
       isFinal: final,
     });
+    return;
   } catch (error) {
     console.error('Voice upload error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -150,6 +151,7 @@ router.post('/upload', upload.single('audio'), async (req: Request, res: Respons
       success: false,
       error: errorMessage,
     });
+    return;
   }
 });
 
@@ -178,6 +180,10 @@ router.get('/transcript/:sessionId', (req: Request, res: Response) => {
       chunkIndex: 0,
     });
   }
+  // SSE connection stays open - connection will be maintained by setupSSEConnection
+  // This is a streaming endpoint, so we don't return - the connection remains open
+  // TypeScript requires a return, but this endpoint intentionally doesn't return
+  return;
 });
 
 /**
@@ -195,15 +201,17 @@ router.post('/complete', (req: Request, res: Response) => {
   sendCompletionMessage(sessionId);
 
   res.json({ success: true });
+  return;
 });
 
 /**
  * GET /api/voice/session/new
  * Create new session
  */
-router.get('/session/new', (req: Request, res: Response) => {
+router.get('/session/new', (_req: Request, res: Response) => {
   const sessionId = uuidv4();
   res.json({ sessionId });
+  return;
 });
 
 export default router;

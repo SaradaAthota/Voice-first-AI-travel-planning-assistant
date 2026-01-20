@@ -232,8 +232,6 @@ export class Orchestrator {
       if (email && context.tripId) {
         // Call the send-pdf endpoint (use internal call instead of HTTP)
         try {
-          // Import the itinerary route handler directly
-          const { default: itineraryRouter } = await import('../routes/itinerary');
           // For now, we'll handle this in the response composer
           // The actual email sending will be triggered by the frontend button
           // or we can add a helper function here
@@ -254,7 +252,7 @@ export class Orchestrator {
               body: JSON.stringify({ tripId: context.tripId, email }),
             });
             if (pdfResponse.ok) {
-              const pdfData = await pdfResponse.json();
+              await pdfResponse.json();
               return {
                 response: {
                   text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
@@ -275,7 +273,7 @@ export class Orchestrator {
           });
           
           if (pdfResponse.ok) {
-            const pdfData = await pdfResponse.json();
+            await pdfResponse.json();
             return {
               response: {
                 text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
@@ -289,8 +287,8 @@ export class Orchestrator {
             // Get error details from response
             let errorDetails = '';
             try {
-              const errorData = await pdfResponse.json();
-              errorDetails = errorData.error || errorData.details || '';
+              const errorData = await pdfResponse.json() as any;
+              errorDetails = (errorData.error || errorData.details || '') as string;
             } catch {
               const errorText = await pdfResponse.text();
               errorDetails = errorText || '';
@@ -538,7 +536,7 @@ export class Orchestrator {
         // Try to parse as ISO date
         parsedDate = entities.startDate;
       }
-      context.preferences.startDate = parsedDate;
+      context.preferences.startDate = parsedDate || undefined;
       if (!context.collectedFields.includes('startDate')) {
         context.collectedFields.push('startDate');
       }

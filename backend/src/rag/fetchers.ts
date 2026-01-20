@@ -10,7 +10,7 @@
  */
 
 import * as cheerio from 'cheerio';
-import { ParsedPage, RAGSource } from './types';
+import { ParsedPage } from './types';
 
 /**
  * Fetch Wikivoyage page for a city
@@ -33,15 +33,15 @@ export async function fetchWikivoyagePage(cityName: string): Promise<ParsedPage 
       throw new Error(`Wikivoyage API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (data.error) {
       console.warn(`Wikivoyage page not found for ${cityName}: ${data.error.info}`);
       return null;
     }
 
-    const html = data.parse.text['*'];
-    const sections = data.parse.sections || [];
+    const html = data.parse.text['*'] as string;
+    const sections = (data.parse.sections || []) as any[];
 
     // Parse HTML and extract sections
     const parsedSections = parseWikivoyageSections(html, sections);
@@ -77,15 +77,15 @@ export async function fetchWikipediaPage(cityName: string): Promise<ParsedPage |
       throw new Error(`Wikipedia API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (data.error) {
       console.warn(`Wikipedia page not found for ${cityName}: ${data.error.info}`);
       return null;
     }
 
-    const html = data.parse.text['*'];
-    const sections = data.parse.sections || [];
+    const html = data.parse.text['*'] as string;
+    const sections = (data.parse.sections || []) as any[];
 
     // Parse HTML and extract sections
     const parsedSections = parseWikipediaSections(html, sections);

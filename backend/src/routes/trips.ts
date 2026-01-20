@@ -43,11 +43,13 @@ router.get('/:tripId/itinerary', async (req: Request, res: Response) => {
     res.json({
       itinerary: itinerary.content,
     });
+    return;
   } catch (error) {
     console.error('Error fetching itinerary:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -74,11 +76,13 @@ router.get('/:tripId', async (req: Request, res: Response) => {
     }
 
     res.json({ trip });
+    return;
   } catch (error) {
     console.error('Error fetching trip:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 

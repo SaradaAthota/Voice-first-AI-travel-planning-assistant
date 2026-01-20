@@ -6,7 +6,6 @@
 
 import { Router, Request, Response } from 'express';
 import { getSupabaseClient } from '../db/supabase';
-import { config } from '../config/env';
 
 const router = Router();
 
@@ -68,15 +67,8 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
     console.log('Itinerary found:', { city: itinerary.city, duration: itinerary.duration });
 
     // Get citations from recent explanations (optional)
-    const { data: transcripts } = await supabase
-      .from('transcripts')
-      .select('content')
-      .eq('trip_id', tripId)
-      .eq('role', 'assistant')
-      .order('timestamp', { ascending: false })
-      .limit(10);
-
-    // Extract citations from transcripts (if available)
+    // Note: In production, citations would be stored separately or extracted from explanation responses
+    // For now, we'll use an empty array
     const citations: any[] = [];
     // Note: In production, citations would be stored separately or extracted from explanation responses
 
@@ -161,6 +153,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
         message: `Itinerary PDF will be sent to ${email}`,
         webhookResponse: webhookData,
       });
+      return;
     } catch (webhookError) {
       console.error('Error calling n8n webhook:', webhookError);
       
@@ -182,6 +175,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -200,11 +194,13 @@ router.get('/:tripId/pdf-status', async (req: Request, res: Response) => {
       pdfSent: false, // Would be fetched from database
       sentAt: null,
     });
+    return;
   } catch (error) {
     console.error('Error checking PDF status:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 

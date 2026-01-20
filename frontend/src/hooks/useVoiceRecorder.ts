@@ -6,7 +6,10 @@
 
 import { useState, useRef, useCallback } from 'react';
 
-const API_BASE_URL = '/api/voice';
+// Use VITE_API_URL in production, fallback to relative path for dev (Vite proxy)
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api/voice` 
+  : '/api/voice';
 const CHUNK_INTERVAL = 2000; // 2 seconds
 
 export interface UseVoiceRecorderReturn {

@@ -424,13 +424,11 @@ export class ItineraryBuilderTool implements MCPTool {
   ): ItineraryDay {
     const { optimizeClusterRoute } = require('./clustering');
     const { buildBlockActivities } = require('./day-builder');
-    const { getPaceConfig } = require('./pace-config');
 
     const optimizedDay = { ...day };
-    const config = getPaceConfig(pace);
 
     // Optimize each block
-    ['morning', 'afternoon', 'evening'].forEach((blockType: 'morning' | 'afternoon' | 'evening') => {
+    (['morning', 'afternoon', 'evening'] as const).forEach((blockType) => {
       const block = day.blocks[blockType];
       if (block && block.activities.length > 1) {
         // Extract POIs from activities

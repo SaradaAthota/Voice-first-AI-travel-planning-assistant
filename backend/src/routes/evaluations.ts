@@ -55,11 +55,13 @@ router.post('/run', async (req: Request, res: Response) => {
     );
 
     res.json(result);
+    return;
   } catch (error) {
     console.error('Evaluation error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -98,11 +100,13 @@ router.post('/itinerary', async (req: Request, res: Response) => {
         failed: results.filter(r => !r.passed).length,
       },
     });
+    return;
   } catch (error) {
     console.error('Itinerary evaluation error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -145,11 +149,13 @@ router.post('/edit-correctness', async (req: Request, res: Response) => {
     );
 
     res.json(result);
+    return;
   } catch (error) {
     console.error('Edit correctness evaluation error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -180,11 +186,13 @@ router.post('/grounding', async (req: Request, res: Response) => {
     );
 
     res.json(result);
+    return;
   } catch (error) {
     console.error('Grounding evaluation error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
@@ -216,11 +224,13 @@ router.get('/:tripId', async (req: Request, res: Response) => {
         },
       },
     });
+    return;
   } catch (error) {
     console.error('Get eval results error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 

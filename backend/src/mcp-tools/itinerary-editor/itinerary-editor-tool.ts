@@ -16,7 +16,6 @@
 import { MCPTool, MCPToolInput, MCPToolOutput, Citation } from '../../orchestration/types';
 import {
   ItineraryEditorInput,
-  EditResult,
   EditChanges,
 } from './types';
 import { ItineraryOutput, ItineraryDay } from '../itinerary-builder/types';
@@ -234,7 +233,7 @@ export class ItineraryEditorTool implements MCPTool {
    */
   private getEditDescription(
     input: ItineraryEditorInput,
-    editResult: { blockModified: boolean }
+    _editResult: { blockModified: boolean }
   ): string {
     const blockStr = input.targetBlock ? ` ${input.targetBlock} block` : '';
     return `Modified day ${input.targetDay}${blockStr} using ${input.editType} operation`;

@@ -41,8 +41,9 @@ export function useSSETranscript(sessionId: string): UseSSETranscriptReturn {
     }
 
     console.log('useSSETranscript: Creating SSE connection for session:', sessionId);
-    // Create SSE connection
-    const eventSource = new EventSource(`/api/voice/transcript/${sessionId}`);
+    // Create SSE connection - use VITE_API_URL in production, fallback to relative path for dev
+    const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+    const eventSource = new EventSource(`${apiBaseUrl}/api/voice/transcript/${sessionId}`);
 
     eventSource.onopen = () => {
       console.log('SSE connection opened for session:', sessionId);

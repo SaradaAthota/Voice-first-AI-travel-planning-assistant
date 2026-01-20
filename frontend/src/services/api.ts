@@ -4,7 +4,10 @@
  * Handles API calls to backend.
  */
 
-const API_BASE_URL = '/api';
+// Use VITE_API_URL in production, fallback to relative path for dev (Vite proxy)
+const API_BASE_URL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api` 
+  : '/api';
 
 /**
  * Get active itinerary for a trip

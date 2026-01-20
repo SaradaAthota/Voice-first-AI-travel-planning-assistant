@@ -2,7 +2,7 @@
  * Types for Itinerary Editor MCP Tool
  */
 
-import { ItineraryOutput, ItineraryDay, DayBlock, Activity } from '../itinerary-builder/types';
+import { ItineraryOutput } from '../itinerary-builder/types';
 import { POI } from '../poi-search/types';
 
 /**

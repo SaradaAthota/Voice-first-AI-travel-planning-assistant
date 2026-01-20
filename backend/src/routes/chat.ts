@@ -37,12 +37,13 @@ function getOrchestrator(): Orchestrator {
  * POST /api/chat
  * Process a message and generate/update itinerary
  */
-router.post('/', async (req: Request, res: Response): Promise<void> => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { message, tripId } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'message is required and must be a non-empty string' });
+      res.status(400).json({ error: 'message is required and must be a non-empty string' });
+      return;
     }
 
     console.log('Processing message:', { message: message.substring(0, 100), tripId });
@@ -141,12 +142,14 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       hasItinerary,
       citations: uniqueCitations,
     });
+    return;
   } catch (error) {
     console.error('Chat processing error:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
+    return;
   }
 });
 
