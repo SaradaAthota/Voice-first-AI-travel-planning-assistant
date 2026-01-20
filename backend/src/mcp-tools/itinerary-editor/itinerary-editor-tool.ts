@@ -56,11 +56,15 @@ export class ItineraryEditorTool implements MCPTool {
       const targetDay = editedItinerary.days[targetDayIndex];
 
       // Step 3: Apply edit to target day/block
+      // For reduce_travel, apply to all blocks in the day if no specific block is targeted
       const editResult = this.applyEdit(
         targetDay,
         editorInput.editType,
         editorInput.targetBlock,
-        editorInput.editParams || {},
+        {
+          ...editorInput.editParams,
+          targetTravelTime: editorInput.editParams?.targetTravelTime,
+        },
         editedItinerary.pace
       );
 
@@ -195,14 +199,29 @@ export class ItineraryEditorTool implements MCPTool {
       day.blocks[targetBlock] = editedBlock;
       return { blockModified: true };
     } else {
-      // Edit all blocks in day (apply to first non-empty block)
-      const blockTypes: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
-      for (const blockType of blockTypes) {
-        const block = day.blocks[blockType];
-        if (block && block.activities.length > 0) {
-          const editedBlock = applyEditToBlock(block, editType, editParams || {}, pace);
-          day.blocks[blockType] = editedBlock;
-          return { blockModified: true };
+      // For reduce_travel, apply to all blocks in the day to reduce total travel time
+      if (editType === 'reduce_travel') {
+        const blockTypes: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
+        let anyModified = false;
+        for (const blockType of blockTypes) {
+          const block = day.blocks[blockType];
+          if (block && block.activities.length > 1) {
+            const editedBlock = applyEditToBlock(block, editType, editParams || {}, pace);
+            day.blocks[blockType] = editedBlock;
+            anyModified = true;
+          }
+        }
+        return { blockModified: anyModified };
+      } else {
+        // For other edit types, apply to first non-empty block
+        const blockTypes: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
+        for (const blockType of blockTypes) {
+          const block = day.blocks[blockType];
+          if (block && block.activities.length > 0) {
+            const editedBlock = applyEditToBlock(block, editType, editParams || {}, pace);
+            day.blocks[blockType] = editedBlock;
+            return { blockModified: true };
+          }
         }
       }
     }

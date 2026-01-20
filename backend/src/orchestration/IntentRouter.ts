@@ -97,8 +97,9 @@ Extract entities from the message:
 - editTarget: For edits, extract as object with:
   * day: Day number (1, 2, etc.) if mentioned (e.g., "day 1", "day one", "first day" = 1, "day 2", "day two", "second day" = 2)
   * block: "morning", "afternoon", or "evening" if mentioned
-  * type: "remove" if "remove" or "delete" mentioned, "swap" if "swap" or "exchange" mentioned, "add" if "add" mentioned, "relax" if "relax" mentioned
+  * type: "remove" if "remove" or "delete" mentioned, "swap" if "swap" or "exchange" mentioned, "add" if "add" mentioned, "relax" if "relax" mentioned, "reduce_travel" if "reduce travel" or "travel time" mentioned
   * poiName: Name of POI to remove/add if mentioned (e.g., "ambassador visit", "Chandragiri fort")
+  * targetTravelTime: Number in minutes if mentioned (e.g., "45 minutes", "1 hour" = 60)
   
 IMPORTANT: If message contains "remove X from day Y", extract:
   - type: "remove"

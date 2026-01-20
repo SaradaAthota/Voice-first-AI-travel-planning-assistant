@@ -165,7 +165,12 @@ function App() {
               // Clear assistant response when itinerary is available
               setAssistantResponse(null);
             } else {
-              setItineraryFromResponse(null);
+              // DON'T clear existing itinerary on edit - preserve it until new one arrives
+              // Only clear if this is a new trip (no tripId) or if hasItinerary is false
+              if (!data.tripId || !data.hasItinerary) {
+                setItineraryFromResponse(null);
+              }
+              // Otherwise, keep existing itinerary visible
               
               // Only show assistant response if no itinerary
               if (data.response) {

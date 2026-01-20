@@ -47,7 +47,7 @@ export function applyEditToBlock(
     case 'remove':
       return removeActivityFromBlock(block, editParams);
     case 'reduce_travel':
-      return reduceTravelInBlock(block, pace);
+      return reduceTravelInBlock(block, pace, editParams.targetTravelTime);
     default:
       return block; // No change
   }
@@ -225,15 +225,41 @@ function removeActivityFromBlock(
  */
 function reduceTravelInBlock(
   block: DayBlock,
-  pace: 'relaxed' | 'moderate' | 'fast'
+  pace: 'relaxed' | 'moderate' | 'fast',
+  targetTravelTime?: number
 ): DayBlock {
   if (block.activities.length <= 1) {
     return block; // Can't optimize single activity
   }
 
   // Reorder activities using nearest neighbor (simple optimization)
-  const pois = block.activities.map(act => act.poi);
-  const optimizedPOIs = optimizeRoute(pois);
+  let pois = block.activities.map(act => act.poi);
+  let optimizedPOIs = optimizeRoute(pois);
+
+  // If targetTravelTime is specified, keep removing activities until we meet the target
+  if (targetTravelTime !== undefined && targetTravelTime > 0) {
+    let currentTravelTime = Infinity;
+    let attempts = 0;
+    const maxAttempts = pois.length - 1; // Don't remove all activities
+    
+    while (currentTravelTime > targetTravelTime && attempts < maxAttempts && optimizedPOIs.length > 1) {
+      // Calculate current travel time
+      const config = getPaceConfig(pace);
+      let totalTravel = 0;
+      for (let i = 1; i < optimizedPOIs.length; i++) {
+        totalTravel += estimateTravelTime(optimizedPOIs[i - 1], optimizedPOIs[i]) + config.travelBuffer;
+      }
+      currentTravelTime = totalTravel;
+      
+      // If still over target, remove the last activity (furthest from others)
+      if (currentTravelTime > targetTravelTime && optimizedPOIs.length > 1) {
+        optimizedPOIs.pop();
+        attempts++;
+      } else {
+        break;
+      }
+    }
+  }
 
   // Rebuild activities with optimized order
   const config = getPaceConfig(pace);

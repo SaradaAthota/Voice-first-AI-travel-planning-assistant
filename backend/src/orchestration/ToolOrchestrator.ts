@@ -97,17 +97,23 @@ export class ToolOrchestrator {
         break;
 
       case ConversationState.EDITING:
-        if (intent === UserIntent.EDIT_ITINERARY) {
-          // Editing requires itinerary builder with edit instructions
+        if (intent === UserIntent.EDIT_ITINERARY && context.tripId && context.editTarget) {
+          // Editing requires itinerary_editor tool (not builder)
+          // The editor will load the existing itinerary and apply edits
           decisions.push({
             shouldCall: true,
-            toolName: 'itinerary_builder',
+            toolName: 'itinerary_editor',
             toolInput: {
               tripId: context.tripId,
-              editTarget: context.editTarget,
-              editInstruction: intent, // Will be refined by intent router
+              editType: context.editTarget.type || 'reduce_travel',
+              targetDay: context.editTarget.day || 1,
+              targetBlock: context.editTarget.block,
+              editParams: {
+                targetTravelTime: context.editTarget.targetTravelTime,
+                poiName: context.editTarget.poiName,
+              },
             },
-            reason: 'User wants to edit itinerary, need to rebuild affected sections',
+            reason: 'User wants to edit itinerary, using itinerary_editor to modify existing itinerary',
           });
         }
         break;
@@ -124,37 +130,22 @@ export class ToolOrchestrator {
         break;
 
       case ConversationState.PLANNED:
-      case ConversationState.COLLECTING_PREFS:
-        // In planned/collecting state, editing triggers itinerary rebuild
-        if (intent === UserIntent.EDIT_ITINERARY && context.tripId && context.preferences.city) {
-          // For edits, we need to:
-          // 1. Load existing itinerary to get POIs and preferences
-          // 2. Apply edit instructions
-          // 3. Rebuild itinerary
+        // In PLANNED state, editing should use itinerary_editor (not rebuild)
+        if (intent === UserIntent.EDIT_ITINERARY && context.tripId && context.editTarget) {
           decisions.push({
             shouldCall: true,
-            toolName: 'poi_search', // Re-search POIs for the city
-            toolInput: {
-              city: context.preferences.city,
-              interests: context.preferences.interests || [],
-              constraints: context.preferences.constraints || [],
-              limit: 50,
-            },
-            reason: 'Re-searching POIs for itinerary edit',
-          });
-          decisions.push({
-            shouldCall: true,
-            toolName: 'itinerary_builder',
+            toolName: 'itinerary_editor',
             toolInput: {
               tripId: context.tripId,
-              city: context.preferences.city,
-              duration: context.preferences.duration || 2,
-              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
-              pace: context.preferences.pace || 'moderate',
-              editTarget: context.editTarget,
-              // Will be populated with POIs from poi_search
+              editType: context.editTarget.type || 'reduce_travel',
+              targetDay: context.editTarget.day || 1,
+              targetBlock: context.editTarget.block,
+              editParams: {
+                targetTravelTime: context.editTarget.targetTravelTime,
+                poiName: context.editTarget.poiName,
+              },
             },
-            reason: 'Rebuilding itinerary with edits',
+            reason: 'User wants to edit existing itinerary, using itinerary_editor',
           });
         }
         break;
@@ -264,6 +255,7 @@ export class ToolOrchestrator {
       }
 
       // Prepare tool input - if itinerary_builder, add POIs from previous POI search
+      // If itinerary_editor, load existing itinerary
       let toolInput = decision.toolInput || {};
       if (decision.toolName === 'itinerary_builder' && poiSearchResults) {
         // POI search returns { pois: [...], city: ..., totalFound: ... }
@@ -278,6 +270,34 @@ export class ToolOrchestrator {
           ...toolInput,
           pois: poisArray,
         };
+      } else if (decision.toolName === 'itinerary_editor' && context.tripId) {
+        // Load existing itinerary for editor
+        try {
+          const { data: itineraryData } = await this.supabase
+            .from('itineraries')
+            .select('content')
+            .eq('trip_id', context.tripId)
+            .eq('is_active', true)
+            .order('version', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (itineraryData && itineraryData.content) {
+            toolInput = {
+              ...toolInput,
+              itinerary: itineraryData.content,
+            };
+            console.log('Loaded existing itinerary for editor:', {
+              tripId: context.tripId,
+              hasItinerary: !!itineraryData.content,
+            });
+          } else {
+            throw new Error(`No active itinerary found for trip ${context.tripId}`);
+          }
+        } catch (err) {
+          console.error('Error loading itinerary for editor:', err);
+          throw err;
+        }
       }
 
       // Execute tool with logging
@@ -422,7 +442,7 @@ export class ToolOrchestrator {
     // If editing, stay in EDITING or move to PLANNED if edit complete
     if (context.state === ConversationState.EDITING) {
       const editComplete = toolCalls.some(
-        (call) => call.toolName === 'itinerary_builder' && call.output.success
+        (call) => (call.toolName === 'itinerary_editor' || call.toolName === 'itinerary_builder') && call.output.success
       );
       return editComplete ? ConversationState.PLANNED : ConversationState.EDITING;
     }

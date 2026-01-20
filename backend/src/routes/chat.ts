@@ -9,6 +9,7 @@ import { Orchestrator } from '../orchestration/Orchestrator';
 import { OrchestratorInput } from '../orchestration/types';
 import { poiSearchTool } from '../mcp-tools/poi-search';
 import { itineraryBuilderTool } from '../mcp-tools/itinerary-builder';
+import { itineraryEditorTool } from '../mcp-tools/itinerary-editor';
 import { getSupabaseClient } from '../db/supabase';
 import { ItineraryOutput } from '../mcp-tools/itinerary-builder/types';
 
@@ -24,10 +25,12 @@ function getOrchestrator(): Orchestrator {
     // Register all MCP tools
     orchestratorInstance.registerTool(poiSearchTool);
     orchestratorInstance.registerTool(itineraryBuilderTool);
+    orchestratorInstance.registerTool(itineraryEditorTool);
     
     console.log('Orchestrator initialized with tools:', {
       poiSearch: !!poiSearchTool,
       itineraryBuilder: !!itineraryBuilderTool,
+      itineraryEditor: !!itineraryEditorTool,
     });
   }
   return orchestratorInstance;
@@ -66,17 +69,25 @@ router.post('/', async (req: Request, res: Response) => {
     // Extract intent from context
     const outputIntent = output.context.lastIntent;
     
-    // Extract itinerary from tool calls (if itinerary_builder was called)
+    // Extract itinerary from tool calls (if itinerary_builder or itinerary_editor was called)
     let itinerary: ItineraryOutput | null = null;
     const allCitations: any[] = [];
     
     if (output.toolCalls) {
-      const itineraryToolCall = output.toolCalls.find(
+      // Check for itinerary_editor first (edits), then itinerary_builder (new/rebuild)
+      const itineraryEditorCall = output.toolCalls.find(
+        (call) => call.toolName === 'itinerary_editor'
+      );
+      const itineraryBuilderCall = output.toolCalls.find(
         (call) => call.toolName === 'itinerary_builder'
       );
+      
+      // Prioritize editor result if both exist (edit takes precedence)
+      const itineraryToolCall = itineraryEditorCall || itineraryBuilderCall;
+      
       if (itineraryToolCall && itineraryToolCall.output.success) {
         itinerary = itineraryToolCall.output.data as ItineraryOutput;
-        // Also collect citations from itinerary builder
+        // Also collect citations from tool
         if (itineraryToolCall.output.citations && Array.isArray(itineraryToolCall.output.citations)) {
           allCitations.push(...itineraryToolCall.output.citations);
         }
