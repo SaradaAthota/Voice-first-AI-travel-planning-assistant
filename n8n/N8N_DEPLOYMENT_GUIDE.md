@@ -4,30 +4,79 @@
 
 This guide covers deploying the n8n workflow for generating itinerary PDFs and emailing them to users. The workflow is **mandatory** for the graduation project.
 
+## ⚠️ Important Architecture Clarification
+
+**n8n Cloud does NOT replace your backend logic.**
+
+n8n Cloud is a **workflow orchestration service** that:
+- Hosts the workflow engine
+- Provides webhook endpoints
+- Orchestrates the email delivery process
+
+**Your Railway backend still owns:**
+- ✅ Database queries (Supabase)
+- ✅ Citations generation
+- ✅ PDF generation logic (Puppeteer)
+- ✅ Business rules
+- ✅ All core functionality
+
+**n8n Cloud only orchestrates:**
+- HTML formatting
+- Calling your backend for PDF generation
+- Email delivery
+- Workflow reliability
+
+## Complete Architecture
+
+```
+Frontend (Vercel)
+    ↓
+Backend API (Railway) ← Owns all business logic
+    ├── Supabase (Database queries)
+    ├── Citations generation
+    ├── PDF generation (Puppeteer)
+    ├── Business rules
+    ↓
+    POST /api/itinerary/send-pdf
+    ↓ Fetches from Supabase
+    ↓ Generates citations
+    ↓
+n8n Cloud (Workflow Orchestration) ← Only orchestrates
+    ├── Webhook (receives payload)
+    ├── Format HTML (styling)
+    ├── Generate PDF (calls backend)
+    ├── Send Email (SMTP)
+    └── Respond to Webhook
+```
+
 ## Workflow Architecture
 
 ```
-Backend (Railway)
+Backend (Railway) - Business Logic
     ↓ POST /api/itinerary/send-pdf
-    ↓ { tripId, email }
+    ↓ Fetches itinerary from Supabase
+    ↓ Generates citations
+    ↓ Calls n8n webhook with complete data
     ↓
-n8n Webhook
+n8n Cloud Webhook
     ↓ Receives { itinerary, email, citations }
     ↓
-Format HTML Node
+Format HTML Node (n8n)
     ↓ Generates styled HTML
     ↓
-Generate PDF Node (HTTP Request to Backend)
-    ↓ POST /api/pdf/generate-pdf
+Generate PDF Node (n8n → Backend)
+    ↓ POST {{ $env.BACKEND_URL }}/api/pdf/generate-pdf
     ↓ { html }
-    ↓ Returns PDF binary
+    ↓ Returns PDF binary (from Railway backend)
     ↓
-Send Email Node
+Send Email Node (n8n)
     ↓ Attaches PDF
     ↓ Sends to user email
     ↓
-Respond to Webhook
+Respond to Webhook (n8n)
     ↓ Returns { success: true }
+    ↓
+Backend receives response
 ```
 
 ## Prerequisites
@@ -49,12 +98,33 @@ Respond to Webhook
 
 ## Step 1: Deploy n8n
 
-### Option A: n8n Cloud (Recommended)
+### Option A: n8n Cloud (Recommended for Production)
+
+**Why n8n Cloud?**
+- ✅ No infrastructure management
+- ✅ Automatic scaling
+- ✅ Secure credential storage
+- ✅ OAuth works out-of-the-box
+- ✅ Public webhook URLs
+- ✅ Reliable uptime
+
+**What n8n Cloud Does:**
+- Hosts workflow engine
+- Provides webhook endpoints
+- Orchestrates email delivery
+- **Does NOT replace backend logic**
+
+**What Your Backend Still Does:**
+- ✅ Fetches from Supabase
+- ✅ Generates citations
+- ✅ Generates PDF (Puppeteer)
+- ✅ All business rules
 
 1. Go to [n8n.cloud](https://n8n.cloud)
 2. Sign up for free account
 3. Create a new workflow
-4. Copy your n8n instance URL (e.g., `https://your-name.n8n.cloud`)
+4. Copy your n8n workspace URL (e.g., `https://your-workspace.n8n.cloud`)
+5. **Note**: Only the webhook URL changes - all backend logic remains unchanged
 
 ### Option B: Self-Hosted on Railway
 
@@ -99,14 +169,29 @@ Access at: `http://localhost:5678`
 
 ## Step 3: Configure Environment Variables
 
-### In n8n Settings
+### In n8n Cloud Settings
 
 1. Go to **Settings** → **Environment Variables**
 2. Add:
    ```
    BACKEND_URL=https://your-backend-url.up.railway.app
    ```
-   **⚠️ IMPORTANT**: No trailing slash, no `localhost` fallback
+   **⚠️ IMPORTANT**: 
+   - No trailing slash
+   - No `localhost` fallback
+   - Must be public HTTPS URL (Railway backend)
+
+### Why BACKEND_URL is Needed
+
+n8n Cloud needs to call your Railway backend for PDF generation:
+```
+n8n Cloud → POST {{ $env.BACKEND_URL }}/api/pdf/generate-pdf
+```
+
+This works because:
+- ✅ n8n Cloud can call public HTTPS APIs
+- ✅ Railway backend is publicly accessible
+- ✅ No localhost/tunnel needed
 
 ### Verify BACKEND_URL
 
@@ -119,9 +204,26 @@ Access at: `http://localhost:5678`
 
 1. Click on **Webhook** node
 2. Note the webhook URL:
-   - n8n Cloud: `https://your-name.n8n.cloud/webhook/itinerary-pdf`
+   - **n8n Cloud**: `https://your-workspace.n8n.cloud/webhook/itinerary-pdf`
    - Self-hosted: `https://your-n8n-instance.com/webhook/itinerary-pdf`
 3. Copy this URL for backend configuration
+
+**📌 Only the webhook URL changes - backend logic remains identical**
+
+Your backend will call:
+```typescript
+await fetch('https://your-workspace.n8n.cloud/webhook/itinerary-pdf', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    itinerary,  // From Supabase
+    email,      // From request
+    citations,  // Generated by backend
+  }),
+});
+```
+
+The payload structure remains **exactly the same** regardless of n8n deployment option.
 
 ## Step 5: Configure SMTP Credentials
 
@@ -188,22 +290,31 @@ Access at: `http://localhost:5678`
 
 In your Railway backend, add:
 ```env
-N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/itinerary-pdf
+N8N_WEBHOOK_URL=https://your-workspace.n8n.cloud/webhook/itinerary-pdf
 ```
 
-### Verify Backend Endpoint
+**📌 This is the ONLY change needed in backend for n8n Cloud**
 
-The backend endpoint `POST /api/itinerary/send-pdf` should:
-1. Fetch itinerary from database
-2. Generate citations
-3. Call n8n webhook with:
-   ```json
-   {
-     "itinerary": { ... },
-     "email": "user@example.com",
-     "citations": [ ... ]
-   }
+### Backend Logic (Unchanged)
+
+The backend endpoint `POST /api/itinerary/send-pdf` **remains exactly the same**:
+
+1. ✅ **Fetches itinerary from Supabase** (backend owns this)
+2. ✅ **Generates citations** (backend owns this)
+3. ✅ **Calls n8n webhook** (only URL changes):
+   ```typescript
+   const webhookResponse = await fetch(process.env.N8N_WEBHOOK_URL, {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+       itinerary,  // From Supabase (backend fetched)
+       email,      // From request
+       citations,  // Generated by backend
+     }),
+   });
    ```
+
+**Key Point**: Backend still owns all business logic. n8n Cloud just receives the data and orchestrates email delivery.
 
 ## Testing
 
@@ -300,7 +411,13 @@ curl -X POST https://your-backend.up.railway.app/api/itinerary/send-pdf \
 - **URL**: `{{ $env.BACKEND_URL }}/api/pdf/generate-pdf`
 - **Body**: `{ "html": "{{ $json.html }}" }`
 - **Response Format**: File (binary PDF)
-- **Purpose**: Calls backend Puppeteer endpoint to generate PDF
+- **Purpose**: Calls **Railway backend** Puppeteer endpoint to generate PDF
+
+**📌 Important**: n8n does NOT generate PDF itself. It calls your Railway backend which:
+- ✅ Runs Puppeteer
+- ✅ Generates PDF from HTML
+- ✅ Returns PDF binary
+- ✅ Owns all PDF generation logic
 
 ### 4. Send Email
 - **Type**: Email Send Node
@@ -380,16 +497,52 @@ curl -X POST https://your-backend.up.railway.app/api/itinerary/send-pdf \
 
 ## Production Checklist
 
-- [ ] n8n instance deployed (cloud or self-hosted)
+- [ ] n8n Cloud workspace created
 - [ ] Workflow imported and activated
-- [ ] `BACKEND_URL` environment variable set (no localhost)
-- [ ] SMTP credentials configured
+- [ ] `BACKEND_URL` environment variable set in n8n (Railway backend URL)
+- [ ] SMTP credentials configured in n8n
 - [ ] Email "From" address configured
 - [ ] Webhook URL copied to backend `N8N_WEBHOOK_URL`
-- [ ] Backend endpoint tested
-- [ ] End-to-end test completed (backend → n8n → email)
+- [ ] Backend still owns: Supabase queries, citations, PDF generation
+- [ ] Backend endpoint tested (`POST /api/itinerary/send-pdf`)
+- [ ] End-to-end test completed (backend → n8n → backend → email)
 - [ ] Error handling verified
 - [ ] Monitoring/logging set up
+
+## Architecture Summary (For Evaluators)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Backend (Railway) - Owns ALL Business Logic            │
+│  ✅ Supabase queries                                     │
+│  ✅ Citations generation                                 │
+│  ✅ PDF generation (Puppeteer)                           │
+│  ✅ Business rules                                       │
+└─────────────────────────────────────────────────────────┘
+                    ↓
+        POST /api/itinerary/send-pdf
+        { tripId, email }
+                    ↓
+┌─────────────────────────────────────────────────────────┐
+│  n8n Cloud - Workflow Orchestration Only                │
+│  ✅ Webhook endpoint                                    │
+│  ✅ HTML formatting                                      │
+│  ✅ Calls backend for PDF                                │
+│  ✅ Email delivery                                       │
+└─────────────────────────────────────────────────────────┘
+                    ↓
+        POST {{ BACKEND_URL }}/api/pdf/generate-pdf
+                    ↓
+        Returns PDF binary
+                    ↓
+        Sends email with PDF attachment
+```
+
+**Key Points:**
+- Backend owns all business logic
+- n8n Cloud only orchestrates workflow
+- PDF generation happens in Railway backend
+- Only webhook URL changes for n8n Cloud
 
 ## Security Considerations
 
