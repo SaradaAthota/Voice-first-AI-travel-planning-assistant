@@ -527,22 +527,37 @@ Before deploying, ensure you have:
    - **Output Directory**: `dist`
    - **Install Command**: `npm install`
 
-3. **Environment Variables**
-   ⚠️ **REQUIRED:** This variable is mandatory for production builds.
+3. **Environment Variables** (REQUIRED)
+   ⚠️ **This variable is mandatory for production builds.**
    
-   ```
-   VITE_API_URL=https://your-backend-url.onrender.com
-   ```
+   - Go to **Settings** → **Environment Variables** (after project is created)
+   - Click **Add New**
+   - Name: `VITE_API_URL`
+   - Value: `https://your-backend-url.up.railway.app` (your Railway backend URL)
+   - **Select environments**: Check boxes for **Production**, **Preview**, and **Development**
+   - Click **Save**
+   - **Redeploy** the project after adding (go to Deployments → ... → Redeploy)
    
    **Important:** 
    - Replace with your actual backend URL from Step 1
-   - This must be set BEFORE building the frontend
+   - No trailing slash in the URL
+   - Must be set BEFORE the frontend can work
    - Without this, all API calls will fail in production
 
 4. **Deploy**
    - Click **"Deploy"**
    - Wait for build to complete
    - Note your frontend URL (e.g., `https://voice-travel.vercel.app`)
+
+5. **Post-Deployment Steps**
+   - **Set Environment Variable**: Go to Settings → Environment Variables, add `VITE_API_URL` (see step 3 above)
+   - **Update Backend CORS**: In Railway backend, add `FRONTEND_URL=https://your-app.vercel.app`
+   - **Test Frontend**: Visit your Vercel URL and test all features
+   
+   **Troubleshooting**:
+   - If repository not found: Go to Settings → Git, connect GitHub, grant repository access
+   - If 404 on settings: Connect GitHub during project import instead
+   - If CORS errors: Verify `FRONTEND_URL` matches your Vercel URL exactly (no trailing slash)
 
 #### Option B: Netlify
 
