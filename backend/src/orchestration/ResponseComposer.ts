@@ -170,9 +170,11 @@ If the user is just greeting you (e.g., "Hi, how are you?"), respond with a frie
 
       case 'COLLECTING_PREFS':
         return `${basePrompt}
-You're collecting trip preferences. Ask clarifying questions naturally.
-Collected so far: ${context.collectedFields.join(', ')}
-Still need: ${context.missingFields.join(', ')}`;
+You're collecting trip preferences. Ask clarifying questions naturally (maximum 6 questions total).
+IMPORTANT: Do NOT generate the itinerary yet. Only ask questions to collect missing information.
+Collected so far: ${context.collectedFields.join(', ') || 'none'}
+Still need: ${context.missingFields.join(', ') || 'none'}
+Ask ONE question at a time. Be conversational and natural.`;
 
       case 'CONFIRMING':
         return `${basePrompt}
