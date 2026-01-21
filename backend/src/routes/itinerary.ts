@@ -6,6 +6,8 @@
 
 import { Router, Request, Response } from 'express';
 import { getSupabaseClient } from '../db/supabase';
+import puppeteer from 'puppeteer';
+import FormData from 'form-data';
 
 const router = Router();
 
@@ -66,24 +68,6 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
     const itinerary = itineraryData.content;
     console.log('Itinerary found:', { city: itinerary.city, duration: itinerary.duration });
 
-    // Get citations - generate basic citations from itinerary
-    const citations: any[] = [
-      {
-        source: 'OpenStreetMap',
-        url: 'https://www.openstreetmap.org',
-        excerpt: `Itinerary built from OpenStreetMap POI data for ${itinerary.city}`,
-      },
-    ];
-    
-    // Add city-specific citations if available (can be enhanced to fetch from RAG)
-    if (itinerary.city) {
-      citations.push({
-        source: 'Wikivoyage',
-        url: `https://en.wikivoyage.org/wiki/${encodeURIComponent(itinerary.city)}`,
-        excerpt: `Travel guide information for ${itinerary.city}`,
-      });
-    }
-
     // Get n8n webhook URL from environment
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     if (!n8nWebhookUrl) {
@@ -93,26 +77,96 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
       });
     }
     
-    console.log('Calling n8n webhook:', n8nWebhookUrl);
+    console.log('Generating PDF for itinerary...');
     
-    // Call n8n webhook
+    // Step 1: Generate HTML for itinerary
+    const html = generateItineraryHTML(itinerary);
+    
+    // Step 2: Generate PDF using Puppeteer
+    let pdfBuffer: Buffer;
     try {
-      console.log('Payload:', { 
-        itinerary: { city: itinerary.city, duration: itinerary.duration, days: itinerary.days?.length },
-        email,
-        citationsCount: citations.length 
+      const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      
+      const browser = await puppeteer.launch({
+        headless: true,
+        executablePath: executablePath,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+        ],
       });
-
+      
+      try {
+        const page = await browser.newPage();
+        await page.setContent(html, { 
+          waitUntil: 'networkidle0',
+          timeout: 30000,
+        });
+        
+        const pdfUint8Array = await page.pdf({
+          format: 'A4',
+          margin: {
+            top: '20mm',
+            right: '20mm',
+            bottom: '20mm',
+            left: '20mm',
+          },
+          printBackground: true,
+          preferCSSPageSize: false,
+        });
+        
+        // Convert Uint8Array to Buffer for FormData
+        pdfBuffer = Buffer.from(pdfUint8Array);
+        
+        console.log('PDF generated successfully, size:', pdfBuffer.length, 'bytes');
+      } finally {
+        await browser.close();
+      }
+    } catch (pdfError) {
+      console.error('PDF generation error:', pdfError);
+      return res.status(500).json({
+        error: 'Failed to generate PDF',
+        details: pdfError instanceof Error ? pdfError.message : 'Unknown error',
+      });
+    }
+    
+    // Step 3: Send PDF to n8n as multipart/form-data
+    console.log('Sending PDF to n8n webhook as multipart/form-data:', n8nWebhookUrl);
+    
+    try {
+      // Create FormData
+      const formData = new FormData();
+      
+      // Append PDF buffer with EXACT field name "itinerary.pdf"
+      formData.append(
+        'itinerary.pdf',
+        pdfBuffer,
+        {
+          filename: 'itinerary.pdf',
+          contentType: 'application/pdf',
+        }
+      );
+      
+      // Append JSON fields separately
+      formData.append('email', email);
+      formData.append('city', itinerary.city);
+      formData.append('duration', String(itinerary.duration));
+      if (itinerary.startDate) {
+        formData.append('startDate', itinerary.startDate);
+      }
+      
+      // Call n8n webhook with FormData
       const webhookResponse = await fetch(n8nWebhookUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          itinerary,
-          email,
-          citations,
-        }),
+        headers: formData.getHeaders(),
+        body: formData,
         // Add timeout
         signal: AbortSignal.timeout(60000), // 60 second timeout
       });
@@ -215,6 +269,116 @@ router.get('/:tripId/pdf-status', async (req: Request, res: Response) => {
     return;
   }
 });
+
+/**
+ * Generate HTML for itinerary PDF
+ */
+function generateItineraryHTML(itinerary: any): string {
+  const startDate = itinerary.startDate ? new Date(itinerary.startDate).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }) : 'TBD';
+  
+  let daysHTML = '';
+  if (itinerary.days && Array.isArray(itinerary.days)) {
+    daysHTML = itinerary.days.map((day: any) => {
+      const dayDate = day.date ? new Date(day.date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }) : `Day ${day.day}`;
+      
+      let blocksHTML = '';
+      if (day.blocks) {
+        const blocks = ['morning', 'afternoon', 'evening'];
+        blocksHTML = blocks.map(blockType => {
+          const block = day.blocks[blockType];
+          if (!block || !block.activities || block.activities.length === 0) {
+            return '';
+          }
+          
+          const activitiesHTML = block.activities.map((activity: any) => {
+            const poi = activity.poi || {};
+            const time = activity.startTime || '';
+            const duration = activity.duration || 0;
+            return `
+              <div style="margin-bottom: 15px; padding: 10px; background: #f9f9f9; border-left: 3px solid #4CAF50;">
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+                  ${time} - ${poi.name || 'Activity'}
+                </div>
+                ${poi.description ? `<div style="color: #666; font-size: 0.9em; margin-bottom: 5px;">${poi.description}</div>` : ''}
+                <div style="color: #888; font-size: 0.85em;">
+                  Duration: ${duration} minutes
+                  ${activity.travelTimeFromPrevious ? ` | Travel: ${activity.travelTimeFromPrevious} min` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+          
+          return `
+            <div style="margin-bottom: 20px;">
+              <h3 style="color: #2196F3; margin-bottom: 10px; text-transform: capitalize;">${blockType}</h3>
+              ${activitiesHTML}
+            </div>
+          `;
+        }).join('');
+      }
+      
+      return `
+        <div style="page-break-inside: avoid; margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+          <h2 style="color: #1976D2; margin-bottom: 15px;">Day ${day.day}: ${dayDate}</h2>
+          ${blocksHTML}
+          ${day.totalActivities ? `<p style="color: #666; font-size: 0.9em;">Total Activities: ${day.totalActivities}</p>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Travel Itinerary - ${itinerary.city}</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+        }
+        h1 {
+          color: #1976D2;
+          border-bottom: 3px solid #1976D2;
+          padding-bottom: 10px;
+        }
+        .header-info {
+          background: #f5f5f5;
+          padding: 15px;
+          border-radius: 5px;
+          margin-bottom: 30px;
+        }
+        .header-info p {
+          margin: 5px 0;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Travel Itinerary: ${itinerary.city}</h1>
+      <div class="header-info">
+        <p><strong>Duration:</strong> ${itinerary.duration} day${itinerary.duration > 1 ? 's' : ''}</p>
+        <p><strong>Start Date:</strong> ${startDate}</p>
+        <p><strong>Pace:</strong> ${itinerary.pace || 'moderate'}</p>
+      </div>
+      ${daysHTML}
+    </body>
+    </html>
+  `;
+}
 
 export default router;
 
