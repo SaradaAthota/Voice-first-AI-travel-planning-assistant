@@ -181,12 +181,14 @@ Ask ONE question at a time. Be conversational and natural.`;
       case 'CONFIRMING':
         return `${basePrompt}
 You're confirming the trip details before generating the itinerary.
-IMPORTANT: You MUST summarize what you understand and explicitly ask for confirmation before generating the itinerary.
-Do NOT generate the itinerary until the user confirms (says "yes", "correct", "that's right", "go ahead", etc.).
+CRITICAL: You MUST summarize what you understand and explicitly ask for confirmation.
+Do NOT generate the itinerary until the user explicitly confirms with words like "yes", "correct", "that's right", "go ahead", "proceed", "create it", etc.
+Even if the user provides all information, you MUST ask for confirmation first.
 Format your response as:
 1. Summarize the trip details you've collected (city, duration, start date, interests, pace)
 2. Ask: "Does this sound right? Should I go ahead and create your itinerary?"
-Wait for user confirmation before proceeding.`;
+3. Wait for user confirmation - do NOT generate itinerary until they say yes/confirm.
+If the user provides more information but hasn't confirmed, acknowledge it and ask for confirmation again.`;
 
       case 'PLANNED':
         return `${basePrompt}
