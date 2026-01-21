@@ -775,7 +775,7 @@ export class Orchestrator {
   /**
    * STEP 4: Define "READY TO BUILD ITINERARY" - core intelligence rule
    * This checks: city, duration, AND user confirmation
-   * User can confirm early (after 2-3 questions) OR after 6 questions (auto-confirm)
+   * User can confirm early OR after 5 questions (auto-generate)
    */
   private shouldGenerateItinerary(context: ConversationContext): boolean {
     return Boolean(

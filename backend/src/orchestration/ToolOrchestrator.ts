@@ -187,7 +187,7 @@ export class ToolOrchestrator {
       case ConversationState.INIT:
       case ConversationState.COLLECTING_PREFS:
         // In INIT or COLLECTING_PREFS state, do NOT generate itinerary
-        // Ask clarifying questions instead (max 6 questions)
+        // Ask clarifying questions instead (max 5 questions)
         // CRITICAL: Even if all required fields (city, duration, startDate) are collected,
         // we MUST still ask follow-up questions about interests, pace, preferences
         // Only transition to CONFIRMING when user explicitly confirms (says "yes", "go ahead", etc.)
