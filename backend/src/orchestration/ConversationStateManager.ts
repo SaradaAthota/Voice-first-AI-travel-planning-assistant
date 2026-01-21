@@ -116,6 +116,7 @@ export class ConversationStateManager {
       },
       collectedFields: [],
       missingFields: [],
+      questionsAsked: (trip.preferences as any)?.questionsAsked || 0,
     };
 
     // Check if itinerary exists (means we're in PLANNED state)

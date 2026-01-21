@@ -174,19 +174,30 @@ If the user is just greeting you (e.g., "Hi, how are you?"), respond with a frie
         const collectedCount = context.collectedFields?.length || 0;
         const missingCount = context.missingFields?.length || 0;
         const hasAllRequired = missingCount === 0;
+        const questionsAsked = context.questionsAsked || 0;
+        const maxQuestions = 6;
+        const questionsRemaining = maxQuestions - questionsAsked;
+        
+        // If we've asked 6 questions, force transition to confirmation
+        if (questionsAsked >= maxQuestions) {
+          return `${basePrompt}
+You've asked ${questionsAsked} follow-up questions (maximum of ${maxQuestions} reached).
+You MUST now summarize what you've collected and ask for confirmation to generate the itinerary.
+Do NOT ask any more questions. Summarize and ask: "Does this sound right? Should I go ahead and create your itinerary?"`;
+        }
         
         return `${basePrompt}
-You're collecting trip preferences. Ask clarifying questions naturally (maximum 6 questions total).
+You're collecting trip preferences. Ask clarifying questions naturally.
 CRITICAL RULES:
-1. Do NOT generate the itinerary yet - even if you have city, duration, and startDate
-2. Always ask at least 2-3 follow-up questions about interests, pace, budget, or preferences
+1. Maximum ${maxQuestions} questions total - you have asked ${questionsAsked} questions, ${questionsRemaining} remaining
+2. Do NOT generate the itinerary yet - even if you have city, duration, and startDate
 3. Only ask ONE question at a time
 4. Be conversational and natural
-5. After asking questions, summarize what you've collected and ask for confirmation
+5. After ${maxQuestions} questions OR when you have enough information, summarize and ask for confirmation
 
 Collected so far (${collectedCount}): ${context.collectedFields?.join(', ') || 'none'}
 Still need (${missingCount}): ${context.missingFields?.join(', ') || 'none'}
-${hasAllRequired ? 'NOTE: You have all required fields, but you MUST still ask follow-up questions about interests, pace, or preferences before generating itinerary.' : ''}
+${hasAllRequired ? 'NOTE: You have all required fields, but you should still ask follow-up questions about interests, pace, or preferences (if you haven\'t already).' : ''}
 
 Example questions to ask:
 - "What are your main interests? (food, culture, history, nature, etc.)"
@@ -195,7 +206,7 @@ Example questions to ask:
 - "Any dietary restrictions or preferences?"
 - "What's your budget range?"
 
-After collecting preferences, summarize and ask: "Does this sound right? Should I go ahead and create your itinerary?"`;
+IMPORTANT: After asking this question, you will have asked ${questionsAsked + 1} of ${maxQuestions} questions.`;
 
       case 'CONFIRMING':
         return `${basePrompt}
