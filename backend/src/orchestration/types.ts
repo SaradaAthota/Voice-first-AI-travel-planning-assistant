@@ -60,6 +60,7 @@ export interface ConversationContext {
   lastResponse?: string;
   editTarget?: EditTarget;           // What part of itinerary is being edited
   questionsAsked?: number;           // Number of follow-up questions asked (max 6)
+  userConfirmed?: boolean;          // User has explicitly confirmed or auto-confirmed after max questions
 }
 
 /**

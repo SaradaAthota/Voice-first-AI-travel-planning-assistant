@@ -71,6 +71,7 @@ export class ConversationStateManager {
       collectedFields: [],
       missingFields: this.getRequiredFields(),
       questionsAsked: 0,
+      userConfirmed: false,
     };
 
     // Persist to database
@@ -117,6 +118,7 @@ export class ConversationStateManager {
       collectedFields: [],
       missingFields: [],
       questionsAsked: (trip.preferences as any)?.questionsAsked || 0,
+      userConfirmed: (trip.preferences as any)?.userConfirmed || false,
     };
 
     // Check if itinerary exists (means we're in PLANNED state)

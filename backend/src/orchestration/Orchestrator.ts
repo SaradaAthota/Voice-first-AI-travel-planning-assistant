@@ -43,6 +43,36 @@ import { EvalContext } from '../evaluations/types';
 // PHASE 1: Define REQUIRED trip fields (hard-coded, not in prompt)
 const REQUIRED_TRIP_FIELDS = ['city', 'duration'] as const;
 
+/**
+ * STEP 2: Detect user confirmation intent (lightweight rules-based)
+ */
+function isUserConfirming(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+  const confirmations = [
+    'yes',
+    'yes exactly',
+    'looks good',
+    'proceed',
+    'go ahead',
+    'get me the itinerary',
+    'generate itinerary',
+    'please proceed',
+    'create itinerary',
+    'build itinerary',
+    'show itinerary',
+    'that\'s right',
+    'correct',
+    'sounds good',
+    'that works',
+    'okay',
+    'ok',
+    'confirm',
+    'finalize',
+  ];
+
+  return confirmations.some(p => lowerMessage.includes(p));
+}
+
 export class Orchestrator {
   private stateManager: ConversationStateManager;
   private intentRouter: IntentRouter;
@@ -186,12 +216,41 @@ export class Orchestrator {
       };
     }
 
+    // STEP 4 & 5: Check if READY TO GENERATE (before generic tool heuristics)
+    const readyToGenerate = this.shouldGenerateItinerary(context);
+    console.log('READY_TO_GENERATE check:', {
+      readyToGenerate,
+      hasCity: !!context.preferences.city,
+      hasDuration: !!context.preferences.duration,
+      userConfirmed: context.userConfirmed,
+    });
+
     // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
-    const toolDecisions = this.toolOrchestrator.decideToolCalls(
-      context,
-      intentClassification.intent
-    );
+    let toolDecisions: any[];
+    
+    // STEP 5: Force tool execution when ready (MUST run before generic heuristics)
+    if (readyToGenerate) {
+      console.log('READY_TO_GENERATE = true → Forcing itinerary_builder tool call');
+      toolDecisions = [{
+        shouldCall: true,
+        toolName: 'itinerary_builder',
+        toolInput: {
+          tripId: context.tripId,
+          city: context.preferences.city,
+          duration: context.preferences.duration,
+          startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+          pace: context.preferences.pace || 'moderate',
+        },
+        reason: 'User confirmed and all required data available - READY_TO_GENERATE',
+      }];
+    } else {
+      // Use generic tool heuristics
+      toolDecisions = this.toolOrchestrator.decideToolCalls(
+        context,
+        intentClassification.intent
+      );
+    }
     console.log('Tool decisions:', toolDecisions.map(d => ({
       shouldCall: d.shouldCall,
       toolName: d.toolName,
@@ -218,6 +277,15 @@ export class Orchestrator {
       toolNames: orchestrationResult.toolCalls.map(c => c.toolName),
       nextState: orchestrationResult.nextState,
     });
+
+    // STEP 6: Set hasItinerary flag ONLY after tool success
+    const itineraryBuilt = orchestrationResult.toolCalls.some(
+      (call) => call.toolName === 'itinerary_builder' && call.output.success
+    );
+    if (itineraryBuilt) {
+      console.log('Itinerary built successfully → hasItinerary = true');
+      // State will be updated to PLANNED by determineNextState in ToolOrchestrator
+    }
 
     // Step 6: Run evaluations if itinerary was generated
     const itineraryToolCall = orchestrationResult.toolCalls.find(
