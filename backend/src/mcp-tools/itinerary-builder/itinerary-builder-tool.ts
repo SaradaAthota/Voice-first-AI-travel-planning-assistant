@@ -24,12 +24,21 @@ import { POI } from '../poi-search/types';
 import { clusterPOIsByProximity } from './clustering';
 import { buildDay } from './day-builder';
 import { getSupabaseClient } from '../../db/supabase';
+import OpenAI from 'openai';
+import { config } from '../../config/env';
 
 export class ItineraryBuilderTool implements MCPTool {
   name = 'itinerary_builder';
   description = 'Build day-wise itinerary from candidate POIs with morning/afternoon/evening blocks';
 
   private supabase = getSupabaseClient();
+  private openai: OpenAI | null = null;
+
+  constructor() {
+    if (config.openai?.apiKey) {
+      this.openai = new OpenAI({ apiKey: config.openai.apiKey });
+    }
+  }
 
   /**
    * Execute itinerary building
@@ -63,10 +72,18 @@ export class ItineraryBuilderTool implements MCPTool {
       // PHASE 4: Handle empty POIs array gracefully (POI search disabled)
       let poisPerDay: POI[][];
       
-      if (builderInput.pois.length === 0) {
-        console.warn('No POIs provided (POI search disabled) - generating basic itinerary structure');
-        // Generate empty POI arrays for each day
-        poisPerDay = Array(builderInput.duration).fill(null).map(() => []);
+      // Check if we need LLM fallback (empty POIs)
+      const needsLLMFallback = builderInput.pois.length === 0;
+      
+      if (needsLLMFallback) {
+        console.log('LLM fallback activities generated for empty POIs');
+        // Generate LLM-based activities for each day
+        poisPerDay = await this.generateLLMActivitiesForDays(
+          builderInput.duration,
+          builderInput.city,
+          builderInput.pace,
+          (input.context as any)?.preferences
+        );
       } else {
         // For reduce_travel edits, use tighter clustering
         const maxClusterDistance = builderInput.editTarget?.type === 'reduce_travel' ? 3 : 5;
@@ -479,6 +496,153 @@ export class ItineraryBuilderTool implements MCPTool {
     console.log(`Day ${day.day} optimized: Travel time reduced from ${day.totalTravelTime}min to ${optimizedDay.totalTravelTime}min`);
 
     return optimizedDay;
+  }
+
+  /**
+   * Generate LLM-based activities when POIs are empty
+   * Creates synthetic POI objects that can be used by the existing day builder
+   */
+  private async generateLLMActivitiesForDays(
+    duration: number,
+    city: string,
+    pace: 'relaxed' | 'moderate' | 'fast',
+    preferences?: any
+  ): Promise<POI[][]> {
+    if (!this.openai) {
+      console.warn('OpenAI not available - generating minimal fallback activities');
+      return this.generateMinimalFallbackActivities(duration, city);
+    }
+
+    const poisPerDay: POI[][] = [];
+    const interests = preferences?.interests || [];
+    const paceDescription = pace === 'relaxed' ? 'relaxed pace with more time at each location' :
+                           pace === 'fast' ? 'fast-paced with quick visits' :
+                           'moderate pace with balanced timing';
+
+    for (let dayNum = 1; dayNum <= duration; dayNum++) {
+      const dayPOIs: POI[] = [];
+
+      try {
+        const systemPrompt = `You are a travel planning assistant. Generate ${2 + (pace === 'fast' ? 2 : pace === 'moderate' ? 1 : 0)}-${3 + (pace === 'fast' ? 1 : 0)} activities for Day ${dayNum} in ${city}.
+Each activity must be:
+- City-specific and realistic
+- Appropriate for the time of day (morning, afternoon, evening)
+- Include title, description, category, and time block
+
+Return ONLY a JSON object with this exact structure:
+{
+  "activities": [
+    {
+      "title": "Activity name",
+      "description": "Brief description",
+      "category": "sightseeing|food|culture|history|nature|entertainment",
+      "timeBlock": "morning|afternoon|evening",
+      "duration": 60
+    }
+  ]
+}
+
+Requirements:
+- ${paceDescription}
+- ${interests.length > 0 ? `User interests: ${interests.join(', ')}` : 'General tourist activities'}
+- Morning: cultural/historic sites, markets, breakfast spots
+- Afternoon: mixed activities, lunch, sightseeing
+- Evening: dinner, entertainment, nightlife
+- Each day should have activities in at least 2 time blocks
+- Duration in minutes (60-180 typical)`;
+
+        const response = await this.openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Generate activities for Day ${dayNum} in ${city}` },
+          ],
+          temperature: 0.7,
+          response_format: { type: 'json_object' },
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (content) {
+          const parsed = JSON.parse(content);
+          const activities = parsed.activities || [];
+
+          for (const activity of Array.isArray(activities) ? activities : []) {
+            // Create synthetic POI from LLM activity
+            const syntheticPOI: POI = {
+              osmId: 1000000 + dayNum * 100 + dayPOIs.length, // Synthetic ID
+              osmType: 'node',
+              name: activity.title || 'Activity',
+              category: activity.category || 'tourism',
+              coordinates: {
+                // Use city center coordinates (approximate - would be better with geocoding)
+                lat: 0, // Will be set to city center if available
+                lon: 0,
+              },
+              tags: {
+                name: activity.title,
+                description: activity.description || '',
+                category: activity.category || 'tourism',
+                timeBlock: activity.timeBlock || 'afternoon',
+                duration: String(activity.duration || 60),
+              },
+              description: activity.description,
+            };
+
+            dayPOIs.push(syntheticPOI);
+          }
+        }
+      } catch (error) {
+        console.error(`Error generating LLM activities for day ${dayNum}:`, error);
+        // Fallback to minimal activities
+        const fallback = this.generateMinimalFallbackActivities(1, city);
+        dayPOIs.push(...fallback[0]);
+      }
+
+      // Ensure we have at least 2-3 activities per day
+      if (dayPOIs.length === 0) {
+        const fallback = this.generateMinimalFallbackActivities(1, city);
+        dayPOIs.push(...fallback[0]);
+      }
+
+      poisPerDay.push(dayPOIs);
+    }
+
+    return poisPerDay;
+  }
+
+  /**
+   * Generate minimal fallback activities when LLM is unavailable
+   */
+  private generateMinimalFallbackActivities(duration: number, city: string): POI[][] {
+    const poisPerDay: POI[][] = [];
+    const defaultActivities = [
+      { name: 'City Center Exploration', category: 'sightseeing', timeBlock: 'morning' },
+      { name: 'Local Market Visit', category: 'culture', timeBlock: 'afternoon' },
+      { name: 'Traditional Restaurant', category: 'food', timeBlock: 'evening' },
+    ];
+
+    for (let dayNum = 1; dayNum <= duration; dayNum++) {
+      const dayPOIs: POI[] = [];
+      for (let i = 0; i < Math.min(3, defaultActivities.length); i++) {
+        const activity = defaultActivities[i];
+        dayPOIs.push({
+          osmId: 2000000 + dayNum * 100 + i,
+          osmType: 'node',
+          name: `${activity.name} - ${city}`,
+          category: activity.category,
+          coordinates: { lat: 0, lon: 0 },
+          tags: {
+            name: activity.name,
+            category: activity.category,
+            timeBlock: activity.timeBlock,
+          },
+          description: `Explore ${city}`,
+        });
+      }
+      poisPerDay.push(dayPOIs);
+    }
+
+    return poisPerDay;
   }
 }
 

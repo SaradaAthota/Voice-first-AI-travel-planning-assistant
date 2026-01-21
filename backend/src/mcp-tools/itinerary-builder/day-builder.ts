@@ -123,28 +123,54 @@ export function buildDay(
   const eveningPOIs: POI[] = [];
 
   for (const poi of pois.slice(0, maxActivitiesPerDay)) {
-    const category = poi.category.toLowerCase();
+    // Check if POI has timeBlock tag (from LLM generation)
+    const timeBlock = poi.tags?.timeBlock;
     
-    if (category === 'history' || category === 'culture' || category === 'museum') {
+    if (timeBlock === 'morning') {
       if (morningPOIs.length < config.maxActivitiesPerBlock) {
         morningPOIs.push(poi);
       } else if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
         afternoonPOIs.push(poi);
       }
-    } else if (category === 'food' || category === 'nightlife' || category === 'entertainment') {
+    } else if (timeBlock === 'evening') {
       if (eveningPOIs.length < config.maxActivitiesPerBlock) {
         eveningPOIs.push(poi);
       } else if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
         afternoonPOIs.push(poi);
       }
-    } else {
-      // Other categories go to afternoon first, then distribute
+    } else if (timeBlock === 'afternoon') {
       if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
         afternoonPOIs.push(poi);
       } else if (morningPOIs.length < config.maxActivitiesPerBlock) {
         morningPOIs.push(poi);
       } else if (eveningPOIs.length < config.maxActivitiesPerBlock) {
         eveningPOIs.push(poi);
+      }
+    } else {
+      // Fallback to category-based distribution for non-LLM POIs
+      const category = poi.category.toLowerCase();
+      
+      if (category === 'history' || category === 'culture' || category === 'museum') {
+        if (morningPOIs.length < config.maxActivitiesPerBlock) {
+          morningPOIs.push(poi);
+        } else if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
+          afternoonPOIs.push(poi);
+        }
+      } else if (category === 'food' || category === 'nightlife' || category === 'entertainment') {
+        if (eveningPOIs.length < config.maxActivitiesPerBlock) {
+          eveningPOIs.push(poi);
+        } else if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
+          afternoonPOIs.push(poi);
+        }
+      } else {
+        // Other categories go to afternoon first, then distribute
+        if (afternoonPOIs.length < config.maxActivitiesPerBlock) {
+          afternoonPOIs.push(poi);
+        } else if (morningPOIs.length < config.maxActivitiesPerBlock) {
+          morningPOIs.push(poi);
+        } else if (eveningPOIs.length < config.maxActivitiesPerBlock) {
+          eveningPOIs.push(poi);
+        }
       }
     }
   }
