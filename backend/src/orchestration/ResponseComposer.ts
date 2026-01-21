@@ -175,29 +175,22 @@ If the user is just greeting you (e.g., "Hi, how are you?"), respond with a frie
         const missingCount = context.missingFields?.length || 0;
         const hasAllRequired = missingCount === 0;
         const questionsAsked = context.questionsAsked || 0;
-        const maxQuestions = 6;
+        const maxQuestions = 5; // Hard stop at 5 questions
         const questionsRemaining = maxQuestions - questionsAsked;
         
-        // If we've asked 6 questions, force transition to confirmation
-        if (questionsAsked >= maxQuestions) {
-          return `${basePrompt}
-You've asked ${questionsAsked} follow-up questions (maximum of ${maxQuestions} reached).
-You MUST now summarize what you've collected and ask for confirmation to generate the itinerary.
-Do NOT ask any more questions. Summarize and ask: "Does this sound right? Should I go ahead and create your itinerary?"`;
-        }
-        
+        // If we've asked 5 questions, the system will auto-generate (handled by Orchestrator)
+        // Just ask the question naturally
         return `${basePrompt}
-You're collecting trip preferences. Ask clarifying questions naturally.
+You're collecting trip preferences. Ask ONE relevant clarifying question naturally.
 CRITICAL RULES:
 1. Maximum ${maxQuestions} questions total - you have asked ${questionsAsked} questions, ${questionsRemaining} remaining
-2. Do NOT generate the itinerary yet - even if you have city, duration, and startDate
-3. Only ask ONE question at a time
-4. Be conversational and natural
-5. After ${maxQuestions} questions OR when you have enough information, summarize and ask for confirmation
+2. Only ask ONE question at a time
+3. Be conversational and natural
+4. Ask about: interests, pace, preferences, budget, dietary restrictions, or specific places to visit
+5. After ${maxQuestions} questions, the system will automatically generate the itinerary
 
 Collected so far (${collectedCount}): ${context.collectedFields?.join(', ') || 'none'}
 Still need (${missingCount}): ${context.missingFields?.join(', ') || 'none'}
-${hasAllRequired ? 'NOTE: You have all required fields, but you should still ask follow-up questions about interests, pace, or preferences (if you haven\'t already).' : ''}
 
 Example questions to ask:
 - "What are your main interests? (food, culture, history, nature, etc.)"

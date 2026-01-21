@@ -269,68 +269,34 @@ export class Orchestrator {
       currentQuestionsAsked: context.questionsAsked || 0,
     });
 
-    // CRITICAL FIX: Increment questionsAsked for ALL follow-up questions, not just when trip is incomplete
-    // This ensures the 6-question limit works even when trip is complete
-    // IMPORTANT: Do NOT increment if user has confirmed (intent === 'CONFIRM') - user wants to generate now, not ask more questions
-    const isAskingFollowUp = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
+    // SIMPLIFIED LOGIC: Ask up to 5 questions, then automatically generate itinerary
+    // Don't check trip completeness - just ask questions and generate
+    const MAX_QUESTIONS = 5; // Hard stop at 5 questions
+    
+    // Check if we should ask a follow-up question
+    const shouldAskQuestion = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
                              intentClassification.intent !== 'CONFIRM' &&
                              intentClassification.intent !== 'EDIT_ITINERARY' &&
                              intentClassification.intent !== 'EXPLAIN' &&
                              intentClassification.intent !== 'SEND_EMAIL' &&
-                             !context.userConfirmed; // Don't increment if user already confirmed (early confirmation)
+                             !context.userConfirmed &&
+                             (context.questionsAsked || 0) < MAX_QUESTIONS;
     
-    if (isAskingFollowUp) {
+    if (shouldAskQuestion) {
       const questionsAsked = (context.questionsAsked || 0) + 1;
-      const maxQuestions = 6;
       
-      console.log(`Incrementing question count: ${questionsAsked} of ${maxQuestions}`);
+      console.log(`Asking follow-up question ${questionsAsked} of ${MAX_QUESTIONS}`);
       context = await this.stateManager.updateContext(context, {
         questionsAsked: questionsAsked,
+        lastIntent: intentClassification.intent,
       });
       
-      // Rule B: Auto-proceed after max questions if city and duration are available
-      if (questionsAsked >= maxQuestions && isTripComplete) {
-        console.log('Auto-confirming after max questions (Rule B) - trip is complete');
-        context = await this.stateManager.updateContext(context, {
-          userConfirmed: true,
-        });
-        context = await this.stateManager.transitionTo(
-          context,
-          ConversationState.CONFIRMING,
-          `Maximum ${maxQuestions} questions asked - auto-confirmed`
-        );
-      } else if (questionsAsked >= maxQuestions) {
-        console.log(`Maximum ${maxQuestions} questions reached - transitioning to CONFIRMING state`);
-        context = await this.stateManager.transitionTo(
-          context,
-          ConversationState.CONFIRMING,
-          `Maximum ${maxQuestions} questions asked`
-        );
-      }
-    }
-
-    // PHASE 1: HARD STOP if trip is incomplete - ask follow-up question and return
-    if (!isTripComplete && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) {
-      const missingFields = REQUIRED_TRIP_FIELDS.filter(
-        (field) => !context.preferences[field as keyof typeof context.preferences]
-      );
-      const maxQuestions = 6;
-      const currentQuestionsAsked = context.questionsAsked || 0;
-      
-      console.log('Follow-up required - missing fields:', missingFields);
-      console.log(`Asking follow-up question ${currentQuestionsAsked} of ${maxQuestions}, stopping execution (HARD STOP)`);
-      
-      // Compose follow-up question using ResponseComposer
+      // Compose and return the follow-up question
       const followUpResponse = await this.responseComposer.compose(
         context,
         [],
         input.message
       );
-      
-      // Update context to persist the state (questionsAsked already incremented above)
-      context = await this.stateManager.updateContext(context, {
-        lastIntent: intentClassification.intent,
-      });
 
       return {
         response: followUpResponse,
@@ -339,8 +305,25 @@ export class Orchestrator {
         stateTransition: undefined,
       };
     }
+    
+    // After 5 questions OR if user confirmed early, automatically generate itinerary
+    const questionsAsked = context.questionsAsked || 0;
+    if (questionsAsked >= MAX_QUESTIONS || context.userConfirmed) {
+      console.log(`Maximum ${MAX_QUESTIONS} questions reached OR user confirmed - auto-generating itinerary`);
+      // Auto-confirm and transition to CONFIRMING
+      context = await this.stateManager.updateContext(context, {
+        userConfirmed: true,
+      });
+      context = await this.stateManager.transitionTo(
+        context,
+        ConversationState.CONFIRMING,
+        questionsAsked >= MAX_QUESTIONS 
+          ? `Maximum ${MAX_QUESTIONS} questions asked - auto-generating`
+          : 'User confirmed early - generating itinerary'
+      );
+    }
 
-    // STEP 4 & 5: Check if READY TO GENERATE (before generic tool heuristics)
+    // STEP 4 & 5: Check if READY TO GENERATE (after 5 questions or user confirmed)
     const readyToGenerate = this.shouldGenerateItinerary(context);
     console.log('READY_TO_GENERATE check:', {
       readyToGenerate,
@@ -349,31 +332,6 @@ export class Orchestrator {
       userConfirmed: context.userConfirmed,
       questionsAsked: context.questionsAsked || 0,
     });
-
-    // CRITICAL: Ask follow-up questions even when trip is COMPLETE (has city + duration)
-    // This ensures we ask about interests, pace, preferences before generating itinerary
-    if (!readyToGenerate && 
-        (context.state === ConversationState.COLLECTING_PREFS || context.state === ConversationState.INIT) &&
-        (context.questionsAsked || 0) < 6) {
-      console.log('Trip is complete but user not confirmed - asking follow-up question');
-      const followUpResponse = await this.responseComposer.compose(
-        context,
-        [],
-        input.message
-      );
-      
-      // Update context to persist the state (questionsAsked already incremented above)
-      context = await this.stateManager.updateContext(context, {
-        lastIntent: intentClassification.intent,
-      });
-
-      return {
-        response: followUpResponse,
-        context,
-        toolCalls: [],
-        stateTransition: undefined,
-      };
-    }
 
     // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
