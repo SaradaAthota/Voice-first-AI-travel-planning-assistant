@@ -164,36 +164,43 @@ function App() {
             setTripId(data.tripId);
             
             // Handle itinerary - prioritize itinerary over assistant response
+            console.log('Processing itinerary in response:', {
+              hasItineraryInData: !!data.itinerary,
+              hasItineraryFlag: data.hasItinerary,
+              tripId: data.tripId,
+              itineraryCity: data.itinerary?.city,
+              itineraryDays: data.itinerary?.days?.length,
+            });
+            
             if (data.itinerary) {
               console.log('Itinerary received in response, setting directly');
               setItineraryFromResponse(data.itinerary);
               // Clear assistant response when itinerary is available
               setAssistantResponse(null);
+            } else if (data.hasItinerary) {
+              // hasItinerary is true but itinerary not in response - fetch it
+              console.log('hasItinerary is true but itinerary not in response, fetching from API...');
+              // Fetch immediately (don't wait for timeout)
+              refetchItinerary();
+              
+              // Also show assistant response while fetching
+              if (data.response) {
+                setAssistantResponse(data.response);
+              }
             } else {
+              // hasItinerary is false - no itinerary yet
+              console.log('hasItinerary is false - itinerary not ready yet');
+              
               // DON'T clear existing itinerary on edit - preserve it until new one arrives
-              // Only clear if this is a new trip (no tripId) or if hasItinerary is false
-              if (!data.tripId || !data.hasItinerary) {
+              // Only clear if this is a new trip (no tripId)
+              if (!data.tripId) {
                 setItineraryFromResponse(null);
               }
               // Otherwise, keep existing itinerary visible
               
-              // Only show assistant response if no itinerary
+              // Show assistant response for follow-up questions
               if (data.response) {
                 setAssistantResponse(data.response);
-              }
-              
-              // Only fetch from /api/trips/:id/itinerary if:
-              // 1. hasItinerary is true AND
-              // 2. itinerary not in response (it might be saved but not returned)
-              if (data.hasItinerary && !data.itinerary) {
-                console.log('hasItinerary is true but itinerary not in response, fetching...');
-                setTimeout(() => {
-                  refetchItinerary();
-                }, 1000);
-              } else if (!data.hasItinerary) {
-                console.log('hasItinerary is false - itinerary not ready yet');
-                // This is expected - assistant will ask follow-up questions
-                // Show assistant response for follow-up questions
               }
             }
           } else {
