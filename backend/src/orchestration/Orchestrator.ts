@@ -112,11 +112,25 @@ export class Orchestrator {
         context,
         intentClassification.entities
       );
+      console.log('Context after entity update:', {
+        state: context.state,
+        collectedFields: context.collectedFields,
+        missingFields: context.missingFields,
+        hasCity: !!context.preferences.city,
+        hasDuration: !!context.preferences.duration,
+        hasStartDate: !!context.preferences.startDate,
+      });
     }
 
     // Step 3: Handle state transitions BEFORE tool decisions (so tool decisions use correct state)
+    const stateBeforeTransition = context.state;
     context = await this.handleStateTransition(context, intentClassification.intent);
-    console.log('State after transition:', context.state);
+    console.log('State transition:', {
+      from: stateBeforeTransition,
+      to: context.state,
+      intent: intentClassification.intent,
+      canProceedToConfirmation: this.stateManager.canProceedToConfirmation(context),
+    });
 
     // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
@@ -568,11 +582,20 @@ export class Orchestrator {
       console.log('No editTarget in entities:', Object.keys(entities));
     }
 
-    // Update missing fields
+    // Update missing fields - but don't auto-transition to CONFIRMING even if all are collected
+    // We still want to ask follow-up questions about interests, pace, etc.
     const required = ['city', 'duration', 'startDate'];
     context.missingFields = required.filter(
       (field) => !context.collectedFields.includes(field)
     );
+    
+    // Log for debugging
+    console.log('Field collection status:', {
+      collectedFields: context.collectedFields,
+      missingFields: context.missingFields,
+      hasAllRequired: context.missingFields.length === 0,
+      note: 'Even if all required fields are collected, stay in COLLECTING_PREFS to ask follow-up questions',
+    });
 
     return this.stateManager.updateContext(context, {
       preferences: context.preferences,

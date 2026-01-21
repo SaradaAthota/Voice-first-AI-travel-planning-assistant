@@ -176,11 +176,19 @@ export class ToolOrchestrator {
       case ConversationState.COLLECTING_PREFS:
         // In INIT or COLLECTING_PREFS state, do NOT generate itinerary
         // Ask clarifying questions instead (max 6 questions)
-        // Only transition to CONFIRMING when all required fields are collected
+        // CRITICAL: Even if all required fields (city, duration, startDate) are collected,
+        // we MUST still ask follow-up questions about interests, pace, preferences
+        // Only transition to CONFIRMING when user explicitly confirms (says "yes", "go ahead", etc.)
         // The ResponseComposer will handle asking questions
+        console.log('BLOCKING tool calls in INIT/COLLECTING_PREFS state:', {
+          state: context.state,
+          collectedFields: context.collectedFields,
+          missingFields: context.missingFields,
+          reason: 'Must ask follow-up questions before generating itinerary',
+        });
         decisions.push({
           shouldCall: false,
-          reason: `State ${context.state} - collecting preferences, asking clarifying questions. Do not generate itinerary yet.`,
+          reason: `State ${context.state} - collecting preferences, asking clarifying questions. Do NOT generate itinerary yet, even if all required fields are collected.`,
         });
         break;
 

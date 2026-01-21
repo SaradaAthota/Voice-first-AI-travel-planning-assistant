@@ -171,12 +171,31 @@ IMPORTANT: Do NOT mention any trip details, dates, or cities unless the user exp
 If the user is just greeting you (e.g., "Hi, how are you?"), respond with a friendly greeting and wait for them to mention their travel plans.`;
 
       case 'COLLECTING_PREFS':
+        const collectedCount = context.collectedFields?.length || 0;
+        const missingCount = context.missingFields?.length || 0;
+        const hasAllRequired = missingCount === 0;
+        
         return `${basePrompt}
 You're collecting trip preferences. Ask clarifying questions naturally (maximum 6 questions total).
-IMPORTANT: Do NOT generate the itinerary yet. Only ask questions to collect missing information.
-Collected so far: ${context.collectedFields.join(', ') || 'none'}
-Still need: ${context.missingFields.join(', ') || 'none'}
-Ask ONE question at a time. Be conversational and natural.`;
+CRITICAL RULES:
+1. Do NOT generate the itinerary yet - even if you have city, duration, and startDate
+2. Always ask at least 2-3 follow-up questions about interests, pace, budget, or preferences
+3. Only ask ONE question at a time
+4. Be conversational and natural
+5. After asking questions, summarize what you've collected and ask for confirmation
+
+Collected so far (${collectedCount}): ${context.collectedFields?.join(', ') || 'none'}
+Still need (${missingCount}): ${context.missingFields?.join(', ') || 'none'}
+${hasAllRequired ? 'NOTE: You have all required fields, but you MUST still ask follow-up questions about interests, pace, or preferences before generating itinerary.' : ''}
+
+Example questions to ask:
+- "What are your main interests? (food, culture, history, nature, etc.)"
+- "What pace do you prefer? (relaxed, moderate, or fast-paced)"
+- "Any specific places or activities you'd like to include?"
+- "Any dietary restrictions or preferences?"
+- "What's your budget range?"
+
+After collecting preferences, summarize and ask: "Does this sound right? Should I go ahead and create your itinerary?"`;
 
       case 'CONFIRMING':
         return `${basePrompt}
