@@ -114,7 +114,11 @@ export class Orchestrator {
       );
     }
 
-    // Step 3: Decide tool calls (ORCHESTRATOR decides, not LLM)
+    // Step 3: Handle state transitions BEFORE tool decisions (so tool decisions use correct state)
+    context = await this.handleStateTransition(context, intentClassification.intent);
+    console.log('State after transition:', context.state);
+
+    // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
     const toolDecisions = this.toolOrchestrator.decideToolCalls(
       context,
@@ -135,7 +139,7 @@ export class Orchestrator {
       }
     }
 
-    // Step 4: Execute tool calls (if any)
+    // Step 5: Execute tool calls (if any)
     console.log('Executing tool calls...');
     const orchestrationResult = await this.toolOrchestrator.executeToolCalls(
       toolDecisions,
@@ -147,7 +151,7 @@ export class Orchestrator {
       nextState: orchestrationResult.nextState,
     });
 
-    // Step 5: Run evaluations if itinerary was generated
+    // Step 6: Run evaluations if itinerary was generated
     const itineraryToolCall = orchestrationResult.toolCalls.find(
       (call) => call.toolName === 'itinerary_builder' && call.output.success
     );
@@ -189,7 +193,7 @@ export class Orchestrator {
       }
     }
 
-    // Step 5b: Update state if tool calls changed it
+    // Step 7: Update state if tool calls changed it
     if (orchestrationResult.nextState) {
       context = await this.stateManager.transitionTo(
         context,
@@ -197,9 +201,6 @@ export class Orchestrator {
         'Tool orchestration completed'
       );
     }
-
-    // Step 6: Handle state transitions based on intent
-    context = await this.handleStateTransition(context, intentClassification.intent);
 
     // Step 7: Handle special intents (like SEND_EMAIL and EDIT_ITINERARY) before composing response
     // IMPORTANT: Handle EDIT_ITINERARY first if both edit and share are mentioned
@@ -548,10 +549,8 @@ export class Orchestrator {
       if (!context.collectedFields.includes('startDate')) {
         context.collectedFields.push('startDate');
       }
-    } else if (!context.preferences.startDate) {
-      // Default to today if no startDate provided
-      context.preferences.startDate = new Date().toISOString().split('T')[0];
     }
+    // DO NOT auto-set startDate - ask user for it if missing
 
     if (entities.interests) {
       context.preferences.interests = entities.interests;
@@ -564,6 +563,9 @@ export class Orchestrator {
     // Update edit target if editing
     if (entities.editTarget) {
       updates.editTarget = entities.editTarget;
+      console.log('Edit target extracted and set:', JSON.stringify(entities.editTarget, null, 2));
+    } else {
+      console.log('No editTarget in entities:', Object.keys(entities));
     }
 
     // Update missing fields
@@ -600,13 +602,16 @@ export class Orchestrator {
         break;
 
       case ConversationState.COLLECTING_PREFS:
-        if (this.stateManager.canProceedToConfirmation(context)) {
+        // DO NOT auto-transition to CONFIRMING - wait for user to explicitly confirm
+        // Only transition when intent is CONFIRM (user says "yes", "go ahead", etc.)
+        if (intent === 'CONFIRM' && this.stateManager.canProceedToConfirmation(context)) {
           return this.stateManager.transitionTo(
             context,
             ConversationState.CONFIRMING,
-            'All required fields collected'
+            'User explicitly confirmed'
           );
         }
+        // Stay in COLLECTING_PREFS to ask follow-up questions
         break;
 
       case ConversationState.PLANNED:

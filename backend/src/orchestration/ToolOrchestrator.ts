@@ -104,23 +104,38 @@ export class ToolOrchestrator {
         break;
 
       case ConversationState.EDITING:
-        if (intent === UserIntent.EDIT_ITINERARY && context.tripId && context.editTarget) {
+        if (intent === UserIntent.EDIT_ITINERARY && context.tripId) {
           // Editing requires itinerary_editor tool (not builder)
           // The editor will load the existing itinerary and apply edits
-          decisions.push({
-            shouldCall: true,
-            toolName: 'itinerary_editor',
-            toolInput: {
-              tripId: context.tripId,
-              editType: context.editTarget.type || 'reduce_travel',
-              targetDay: context.editTarget.day || 1,
-              targetBlock: context.editTarget.block,
-              editParams: {
-                targetTravelTime: context.editTarget.targetTravelTime,
-                poiName: context.editTarget.poiName,
+          if (!context.editTarget) {
+            console.warn('EDIT_ITINERARY intent but no editTarget in context - extracting from intent entities');
+            // Try to infer edit from context - this shouldn't happen if extraction works
+            decisions.push({
+              shouldCall: false,
+              reason: 'EDIT_ITINERARY intent but editTarget not extracted - cannot proceed with edit',
+            });
+          } else {
+            console.log('Calling itinerary_editor with editTarget:', context.editTarget);
+            decisions.push({
+              shouldCall: true,
+              toolName: 'itinerary_editor',
+              toolInput: {
+                tripId: context.tripId,
+                editType: context.editTarget.type || 'reduce_travel',
+                targetDay: context.editTarget.day || 1,
+                targetBlock: context.editTarget.block,
+                editParams: {
+                  targetTravelTime: context.editTarget.targetTravelTime,
+                  poiName: context.editTarget.poiName,
+                },
               },
-            },
-            reason: 'User wants to edit itinerary, using itinerary_editor to modify existing itinerary',
+              reason: 'User wants to edit itinerary, using itinerary_editor to modify existing itinerary',
+            });
+          }
+        } else {
+          decisions.push({
+            shouldCall: false,
+            reason: `EDITING state but intent is ${intent} (expected EDIT_ITINERARY) or missing tripId`,
           });
         }
         break;

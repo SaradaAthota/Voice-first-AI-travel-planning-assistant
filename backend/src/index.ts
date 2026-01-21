@@ -22,16 +22,31 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       ? [] // No default in production - must be explicitly set
       : ['http://localhost:5173']; // Default for development
 
+console.log('CORS configuration:', {
+  allowedOrigins: allowedOrigins.length > 0 ? allowedOrigins : 'none (allowing server-to-server)',
+  hasFrontendUrl: !!process.env.FRONTEND_URL,
+  hasAllowedOrigins: !!process.env.ALLOWED_ORIGINS,
+});
+
 app.use(cors({
   origin: (origin, callback) => {
-    // ✅ Allow server-to-server calls (n8n, cron, backend-to-backend) - no origin header
-    // This is critical for n8n Cloud webhooks and other server-to-server communication
+    // ✅ CRITICAL: Allow server-to-server calls (n8n, cron, backend-to-backend) - no origin header
+    // This is essential for n8n Cloud webhooks and other server-to-server communication
+    // Server-to-server requests (like n8n webhooks) do NOT send Origin header
     if (!origin) {
+      console.log('CORS: Allowing request without origin (server-to-server)');
       return callback(null, true);
     }
     
     // ✅ Allow known frontends
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
+      console.log('CORS: Allowing request from allowed origin:', origin);
+      return callback(null, true);
+    }
+    
+    // If no allowed origins configured but we have a frontend URL, allow it
+    if (allowedOrigins.length === 0 && process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      console.log('CORS: Allowing request from FRONTEND_URL:', origin);
       return callback(null, true);
     }
     
