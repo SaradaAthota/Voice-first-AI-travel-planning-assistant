@@ -7,7 +7,6 @@
 import { Router, Request, Response } from 'express';
 import { getSupabaseClient } from '../db/supabase';
 import puppeteer from 'puppeteer';
-import FormData from 'form-data';
 
 const router = Router();
 
@@ -137,36 +136,34 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
       });
     }
 
-    // Step 3: Send PDF to n8n as multipart/form-data
-    console.log('Sending PDF to n8n webhook as multipart/form-data:', n8nWebhookUrl);
+    // Step 3: Send PDF to n8n as JSON with base64 PDF
+    // n8n webhook parses JSON body reliably, and we can convert base64 to binary in n8n
+    console.log('Sending PDF to n8n webhook as JSON with base64 PDF:', n8nWebhookUrl);
 
     try {
-      // Create FormData
-      const formData = new FormData();
+      // Convert PDF buffer to base64
+      const pdfBase64 = pdfBuffer.toString('base64');
 
-      // Append PDF buffer with EXACT field name "itinerary.pdf"
-      formData.append(
-        'itinerary.pdf',
-        pdfBuffer,
-        {
+      // Send as JSON - n8n will parse this correctly
+      const payload = {
+        email: email,
+        city: itinerary.city,
+        duration: itinerary.duration,
+        startDate: itinerary.startDate || null,
+        pdf: {
+          data: pdfBase64,
           filename: 'itinerary.pdf',
           contentType: 'application/pdf',
-        }
-      );
+        },
+      };
 
-      // Append JSON fields separately
-      formData.append('email', email);
-      formData.append('city', itinerary.city);
-      formData.append('duration', String(itinerary.duration));
-      if (itinerary.startDate) {
-        formData.append('startDate', itinerary.startDate);
-      }
-
-      // Call n8n webhook with FormData
+      // Call n8n webhook with JSON
       const webhookResponse = await fetch(n8nWebhookUrl, {
         method: 'POST',
-        headers: formData.getHeaders(),
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
         // Add timeout
         signal: AbortSignal.timeout(60000), // 60 second timeout
       });
