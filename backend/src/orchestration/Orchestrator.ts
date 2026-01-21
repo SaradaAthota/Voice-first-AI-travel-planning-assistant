@@ -266,35 +266,29 @@ export class Orchestrator {
       hasDuration: !!context.preferences.duration,
       city: context.preferences.city,
       duration: context.preferences.duration,
+      currentQuestionsAsked: context.questionsAsked || 0,
     });
 
-    // PHASE 1: HARD STOP if trip is incomplete - ask follow-up question and return
-    if (!isTripComplete && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) {
-      const missingFields = REQUIRED_TRIP_FIELDS.filter(
-        (field) => !context.preferences[field as keyof typeof context.preferences]
-      );
+    // CRITICAL FIX: Increment questionsAsked for ALL follow-up questions, not just when trip is incomplete
+    // This ensures the 6-question limit works even when trip is complete
+    const isAskingFollowUp = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
+                             intentClassification.intent !== 'CONFIRM' &&
+                             intentClassification.intent !== 'EDIT_ITINERARY' &&
+                             intentClassification.intent !== 'EXPLAIN' &&
+                             intentClassification.intent !== 'SEND_EMAIL';
+    
+    if (isAskingFollowUp) {
       const questionsAsked = (context.questionsAsked || 0) + 1;
       const maxQuestions = 6;
       
-      console.log('Follow-up required - missing fields:', missingFields);
-      console.log(`Asking follow-up question ${questionsAsked} of ${maxQuestions}, stopping execution (HARD STOP)`);
-      
-      // Compose follow-up question using ResponseComposer
-      const followUpResponse = await this.responseComposer.compose(
-        context,
-        [],
-        input.message
-      );
-      
-      // Update context to persist the state and increment question count
+      console.log(`Incrementing question count: ${questionsAsked} of ${maxQuestions}`);
       context = await this.stateManager.updateContext(context, {
-        lastIntent: intentClassification.intent,
         questionsAsked: questionsAsked,
       });
-
+      
       // Rule B: Auto-proceed after max questions if city and duration are available
       if (questionsAsked >= maxQuestions && isTripComplete) {
-        console.log('Auto-confirming after max questions (Rule B)');
+        console.log('Auto-confirming after max questions (Rule B) - trip is complete');
         context = await this.stateManager.updateContext(context, {
           userConfirmed: true,
         });
@@ -311,6 +305,30 @@ export class Orchestrator {
           `Maximum ${maxQuestions} questions asked`
         );
       }
+    }
+
+    // PHASE 1: HARD STOP if trip is incomplete - ask follow-up question and return
+    if (!isTripComplete && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) {
+      const missingFields = REQUIRED_TRIP_FIELDS.filter(
+        (field) => !context.preferences[field as keyof typeof context.preferences]
+      );
+      const maxQuestions = 6;
+      const currentQuestionsAsked = context.questionsAsked || 0;
+      
+      console.log('Follow-up required - missing fields:', missingFields);
+      console.log(`Asking follow-up question ${currentQuestionsAsked} of ${maxQuestions}, stopping execution (HARD STOP)`);
+      
+      // Compose follow-up question using ResponseComposer
+      const followUpResponse = await this.responseComposer.compose(
+        context,
+        [],
+        input.message
+      );
+      
+      // Update context to persist the state (questionsAsked already incremented above)
+      context = await this.stateManager.updateContext(context, {
+        lastIntent: intentClassification.intent,
+      });
 
       return {
         response: followUpResponse,
