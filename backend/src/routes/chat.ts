@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { Orchestrator } from '../orchestration/Orchestrator';
 import { OrchestratorInput } from '../orchestration/types';
-import { poiSearchTool } from '../mcp-tools/poi-search';
+// import { poiSearchTool } from '../mcp-tools/poi-search'; // POI search disabled
 import { itineraryBuilderTool } from '../mcp-tools/itinerary-builder';
 import { itineraryEditorTool } from '../mcp-tools/itinerary-editor';
 import { getSupabaseClient } from '../db/supabase';

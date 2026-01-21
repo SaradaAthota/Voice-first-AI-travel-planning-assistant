@@ -76,6 +76,9 @@ export class ConversationStateManager {
       userSaidNoPreferences: false,
       preferencesProvided: false,
       hasItinerary: false,
+      emailAddress: undefined,
+      emailConfirmed: false,
+      fallbackToLLMItinerary: false,
     };
 
     // Persist to database
@@ -127,6 +130,9 @@ export class ConversationStateManager {
       userSaidNoPreferences: (trip.preferences as any)?.userSaidNoPreferences || false,
       preferencesProvided: (trip.preferences as any)?.preferencesProvided || false,
       hasItinerary: (trip.preferences as any)?.hasItinerary || false,
+      emailAddress: (trip.preferences as any)?.emailAddress || undefined,
+      emailConfirmed: (trip.preferences as any)?.emailConfirmed || false,
+      fallbackToLLMItinerary: (trip.preferences as any)?.fallbackToLLMItinerary || false,
     };
 
     // Check if itinerary exists (means we're in PLANNED state)

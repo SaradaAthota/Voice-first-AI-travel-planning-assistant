@@ -41,7 +41,8 @@ import { runItineraryEvaluations } from '../evaluations/eval-runner';
 import { EvalContext } from '../evaluations/types';
 
 // PHASE 1: Define REQUIRED trip fields (hard-coded, not in prompt)
-const REQUIRED_TRIP_FIELDS = ['city', 'duration'] as const;
+// Note: Currently using isTripReady() instead of this constant
+// Removed unused constant - REQUIRED_TRIP_FIELDS logic is handled by isTripReady()
 const MAX_FOLLOW_UP_QUESTIONS = 6; // Hard limit for follow-up questions
 
 /**
@@ -391,6 +392,22 @@ export class Orchestrator {
       );
     }
 
+    // FIX #1: AUTO-GENERATE ITINERARY WHEN TRIP IS READY
+    // If trip is ready and no itinerary exists, automatically generate (BEFORE follow-up questions)
+    // This must happen even if user hasn't explicitly confirmed - trip readiness is sufficient
+    if (tripReady && !context.hasItinerary) {
+      console.log('FIX #1: Trip is ready but no itinerary - auto-generating itinerary (no explicit confirmation needed)');
+      context = await this.stateManager.updateContext(context, {
+        userConfirmed: true, // Auto-confirm since trip is ready
+      });
+      context = await this.stateManager.transitionTo(
+        context,
+        ConversationState.CONFIRMING,
+        'Trip is ready - auto-generating itinerary'
+      );
+      // Continue to tool execution below (don't ask follow-up questions)
+    }
+
     // Check if we should ask a follow-up question
     const shouldAskQuestion = !context.hasItinerary &&
                              (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
@@ -406,7 +423,7 @@ export class Orchestrator {
       console.log(`Asking follow-up question ${context.followUpCount || 0} of ${MAX_FOLLOW_UP_QUESTIONS}`);
       
       // Compose and return the follow-up question
-      const followUpResponse = await this.responseComposer.compose(
+      const followUpResponse = await this.responseComposer.composeResponse(
         context,
         [],
         input.message
@@ -486,6 +503,60 @@ export class Orchestrator {
       nextState: orchestrationResult.nextState,
     });
 
+    // FIX #2: POI SEARCH FAILURE FALLBACK
+    // Check if POI search failed and itinerary generation is needed
+    const poiSearchCall = orchestrationResult.toolCalls.find(
+      (call) => call.toolName === 'poi_search'
+    );
+    const poiSearchFailed = poiSearchCall && !poiSearchCall.output.success;
+    const itineraryBuilderCall = orchestrationResult.toolCalls.find(
+      (call) => call.toolName === 'itinerary_builder'
+    );
+    const itineraryGenerationNeeded = !itineraryBuilderCall || !itineraryBuilderCall.output.success;
+    
+    if (poiSearchFailed && itineraryGenerationNeeded && tripReady && !context.hasItinerary) {
+      console.log('FIX #2: POI search failed - falling back to LLM-only itinerary generation');
+      context = await this.stateManager.updateContext(context, {
+        fallbackToLLMItinerary: true,
+      });
+      
+      // Force itinerary generation with empty POIs (fallback mode)
+      const fallbackToolDecision = {
+        shouldCall: true,
+        toolName: 'itinerary_builder',
+        toolInput: {
+          tripId: context.tripId,
+          city: context.preferences.city,
+          duration: context.preferences.duration,
+          startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+          pace: context.preferences.pace || 'moderate',
+          pois: [], // Empty POIs - LLM will generate generic itinerary
+        },
+        reason: 'POI search failed - using LLM-only fallback generation',
+      };
+      
+      const fallbackResult = await this.toolOrchestrator.executeToolCalls(
+        [fallbackToolDecision],
+        context
+      );
+      
+      // Merge fallback results with existing results
+      orchestrationResult.toolCalls.push(...fallbackResult.toolCalls);
+      console.log('FIX #2: Fallback itinerary generation completed');
+      
+      // FIX #2: Ensure hasItinerary is set after fallback generation
+      const fallbackItineraryBuilt = fallbackResult.toolCalls.some(
+        (call) => call.toolName === 'itinerary_builder' && call.output.success
+      );
+      if (fallbackItineraryBuilt) {
+        console.log('FIX #2: Fallback itinerary built successfully → hasItinerary = true');
+        context = await this.stateManager.updateContext(context, {
+          hasItinerary: true,
+        });
+        context.state = ConversationState.PLANNED;
+      }
+    }
+
     // 5️⃣ Correct hasItinerary Flag Handling
     const itineraryBuilt = orchestrationResult.toolCalls.some(
       (call) => call.toolName === 'itinerary_builder' && call.output.success
@@ -558,13 +629,14 @@ export class Orchestrator {
       // The edited itinerary will be returned in toolCalls
     }
     
+    // FIX #3: EMAIL CONFIRMATION GATE
     // 4️⃣ Fix Intent Arbitration: SEND_EMAIL only if itinerary exists
     if (resolvedIntent === UserIntent.SEND_EMAIL) {
       console.log('SEND_EMAIL intent detected');
       
       // CRITICAL: If no itinerary exists, generate it first
       if (!context.hasItinerary) {
-        console.log('SEND_EMAIL but no itinerary - generating itinerary first');
+        console.log('FIX #3: SEND_EMAIL but no itinerary - generating itinerary first');
         // Force generate itinerary
         if (isTripReady(context)) {
           context = await this.stateManager.updateContext(context, {
@@ -593,6 +665,7 @@ export class Orchestrator {
           };
         }
       }
+      
       // Extract email from message or entities
       // Try multiple extraction methods
       const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/i;
@@ -600,13 +673,63 @@ export class Orchestrator {
       const emailFromMessage = emailMatch ? emailMatch[0] : null;
       const emailFromEntities = intentClassification.entities?.email;
       const email = emailFromMessage || emailFromEntities;
+      
+      // FIX #3: Store email if provided, but require confirmation
+      if (email && !context.emailConfirmed) {
+        console.log('FIX #3: Email provided but not confirmed - storing email and asking for confirmation');
+        context = await this.stateManager.updateContext(context, {
+          emailAddress: email,
+          emailConfirmed: false,
+        });
+        return {
+          response: {
+            text: `I have your email address: ${email}. Should I send the itinerary PDF to this email? Please confirm with "yes", "send it", or "go ahead".`,
+            state: context.state,
+            metadata: { tripId: context.tripId },
+          },
+          context,
+          toolCalls: orchestrationResult.toolCalls,
+        };
+      }
+      
+      // FIX #3: Check for email confirmation phrases
+      const confirmationPhrases = ['yes', 'send it', 'go ahead', 'confirm', 'proceed', 'that\'s right'];
+      const lowerMessage = input.message.toLowerCase();
+      const isEmailConfirmation = confirmationPhrases.some(phrase => lowerMessage.includes(phrase));
+      
+      if (isEmailConfirmation && context.emailAddress && !context.emailConfirmed) {
+        console.log('FIX #3: Email confirmation detected - setting emailConfirmed = true');
+        context = await this.stateManager.updateContext(context, {
+          emailConfirmed: true,
+        });
+        // Continue to email sending below
+      }
+      
+      // FIX #3: Only send email if hasItinerary AND emailConfirmed
+      if (!context.hasItinerary || !context.emailConfirmed) {
+        console.log('FIX #3: Email sending blocked - hasItinerary:', context.hasItinerary, 'emailConfirmed:', context.emailConfirmed);
+        return {
+          response: {
+            text: context.emailAddress 
+              ? "Please confirm sending the itinerary to your email, or wait for the itinerary to be generated first."
+              : "I need your email address to send the itinerary. What email should I send it to?",
+            state: context.state,
+            metadata: { tripId: context.tripId },
+          },
+          context,
+          toolCalls: orchestrationResult.toolCalls,
+        };
+      }
+      
+      // Use stored email or extracted email
+      const emailToUse = context.emailAddress || email;
       console.log('Extracted email:', { 
         fromMessage: emailFromMessage, 
         fromEntities: emailFromEntities, 
         final: email 
       });
       
-      if (!email && context.tripId) {
+      if (!emailToUse && context.tripId) {
         // No email found - ask user for email
         return {
           response: {
@@ -619,7 +742,7 @@ export class Orchestrator {
         };
       }
       
-      if (email && context.tripId) {
+      if (emailToUse && context.tripId) {
         // Call the send-pdf endpoint (use internal call instead of HTTP)
         try {
           // For now, we'll handle this in the response composer
@@ -645,7 +768,7 @@ export class Orchestrator {
               await pdfResponse.json();
               return {
                 response: {
-                  text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
+                  text: `Perfect! I've sent your itinerary PDF to ${emailToUse}. Please check your inbox.`,
                   state: context.state,
                   metadata: { tripId: context.tripId },
                 },
@@ -666,7 +789,7 @@ export class Orchestrator {
             await pdfResponse.json();
             return {
               response: {
-                text: `Perfect! I've sent your itinerary PDF to ${email}. Please check your inbox.`,
+                text: `Perfect! I've sent your itinerary PDF to ${emailToUse}. Please check your inbox.`,
                 state: context.state,
                 metadata: { tripId: context.tripId },
               },
@@ -906,15 +1029,7 @@ export class Orchestrator {
     return Boolean(context.preferences.city && context.preferences.duration);
   }
 
-  /**
-   * STEP 4: Define "READY TO BUILD ITINERARY" - core intelligence rule
-   * This checks: city, duration, AND user confirmation
-   * User can confirm early OR after 5 questions (auto-generate)
-   */
-  private shouldGenerateItinerary(context: ConversationContext): boolean {
-    // Use isTripReady() instead of simple checks
-    return isTripReady(context) && (context.userConfirmed === true || (context.followUpCount || 0) >= MAX_FOLLOW_UP_QUESTIONS);
-  }
+  // Removed unused shouldGenerateItinerary method - logic is handled inline using isTripReady()
 
   /**
    * Update context with entities extracted from intent classification

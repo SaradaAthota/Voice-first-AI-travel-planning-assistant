@@ -65,6 +65,9 @@ export interface ConversationContext {
   userSaidNoPreferences?: boolean;   // User said "no preferences", "you decide", etc.
   preferencesProvided?: boolean;     // User has provided preferences (interests, pace, etc.)
   hasItinerary?: boolean;            // Itinerary has been successfully generated
+  emailAddress?: string;             // Email address provided by user
+  emailConfirmed?: boolean;          // User has confirmed sending email
+  fallbackToLLMItinerary?: boolean;  // Flag indicating fallback to LLM-only itinerary generation
 }
 
 /**

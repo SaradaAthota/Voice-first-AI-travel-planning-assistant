@@ -26,6 +26,8 @@ export interface EditParams {
   increaseDuration?: number;          // Minutes
   // For 'reduce_travel': optimize route
   optimizeRoute?: boolean;
+  // For 'reduce_travel': target travel time in minutes
+  targetTravelTime?: number;
 }
 
 /**

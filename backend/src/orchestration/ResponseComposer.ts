@@ -173,7 +173,7 @@ If the user is just greeting you (e.g., "Hi, how are you?"), respond with a frie
       case 'COLLECTING_PREFS':
         const collectedCount = context.collectedFields?.length || 0;
         const missingCount = context.missingFields?.length || 0;
-        const hasAllRequired = missingCount === 0;
+        // Removed unused _hasAllRequired variable
         const questionsAsked = context.questionsAsked || 0;
         const maxQuestions = 5; // Hard stop at 5 questions
         const questionsRemaining = maxQuestions - questionsAsked;
