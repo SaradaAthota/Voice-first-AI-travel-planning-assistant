@@ -92,8 +92,13 @@ function App() {
         }
         
         // Clear previous response before processing new one
+        // BUT: Don't clear itinerary if we're editing (tripId exists)
+        // This prevents itinerary from disappearing during edits
         setAssistantResponse(null);
-        setItineraryFromResponse(null);
+        if (!tripId) {
+          // Only clear itinerary if this is a new trip
+          setItineraryFromResponse(null);
+        }
         
         // Track this request with a timestamp
         const requestTimestamp = Date.now();

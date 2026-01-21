@@ -86,12 +86,31 @@ router.post('/', async (req: Request, res: Response) => {
       // Prioritize editor result if both exist (edit takes precedence)
       const itineraryToolCall = itineraryEditorCall || itineraryBuilderCall;
       
+      console.log('Itinerary tool call check:', {
+        hasEditorCall: !!itineraryEditorCall,
+        hasBuilderCall: !!itineraryBuilderCall,
+        hasToolCall: !!itineraryToolCall,
+        toolCallSuccess: itineraryToolCall?.output?.success,
+        toolCallData: !!itineraryToolCall?.output?.data,
+      });
+      
       if (itineraryToolCall && itineraryToolCall.output.success) {
         itinerary = itineraryToolCall.output.data as ItineraryOutput;
+        console.log('Itinerary extracted from tool call:', {
+          hasItinerary: !!itinerary,
+          city: itinerary?.city,
+          days: itinerary?.days?.length,
+        });
         // Also collect citations from tool
         if (itineraryToolCall.output.citations && Array.isArray(itineraryToolCall.output.citations)) {
           allCitations.push(...itineraryToolCall.output.citations);
         }
+      } else if (itineraryToolCall) {
+        console.warn('Itinerary tool call failed:', {
+          toolName: itineraryToolCall.toolName,
+          success: itineraryToolCall.output.success,
+          error: itineraryToolCall.output.error,
+        });
       }
       
       // Collect citations from all tool calls
@@ -139,21 +158,36 @@ router.post('/', async (req: Request, res: Response) => {
       tripId: outputTripId,
       intent: outputIntent,
       hasItinerary,
+      hasItineraryInResponse: !!itinerary,
+      itineraryCity: itinerary?.city,
+      itineraryDays: itinerary?.days?.length,
       state: output.context.state,
       toolCallsCount: output.toolCalls?.length || 0,
       citationsCount: uniqueCitations.length,
     });
 
-    // Return response
-    res.json({
+    // Return response - ALWAYS include itinerary if it exists
+    const responseData: any = {
       success: true,
       tripId: outputTripId,
       intent: outputIntent,
       response: output.response.text,
-      itinerary,
       hasItinerary,
       citations: uniqueCitations,
-    });
+    };
+    
+    // Include itinerary if it exists (even if null, to be explicit)
+    if (itinerary) {
+      responseData.itinerary = itinerary;
+      console.log('Including itinerary in response:', {
+        city: itinerary.city,
+        days: itinerary.days?.length,
+      });
+    } else {
+      console.log('No itinerary to include in response');
+    }
+    
+    res.json(responseData);
     return;
   } catch (error) {
     console.error('Chat processing error:', error);
