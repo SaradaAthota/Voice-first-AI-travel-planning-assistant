@@ -55,18 +55,33 @@ export class IntentRouter {
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
+        console.error('Intent classification: No response from LLM');
         throw new Error('No response from LLM');
       }
 
-      const classification = JSON.parse(content) as IntentClassification;
+      console.log('Intent classification LLM response:', content);
+      
+      let classification: IntentClassification;
+      try {
+        classification = JSON.parse(content) as IntentClassification;
+      } catch (parseError) {
+        console.error('Intent classification: Failed to parse JSON:', parseError);
+        console.error('Raw LLM response:', content);
+        throw new Error('Failed to parse LLM response as JSON');
+      }
       
       // Validate and normalize the classification
-      return this.validateClassification(classification);
+      const validated = this.validateClassification(classification);
+      console.log('Intent classification validated:', validated);
+      return validated;
     } catch (error) {
       console.error('Intent classification error:', error);
+      console.log('Falling back to keyword-based classification for message:', message);
       
       // Fallback to simple keyword-based classification
-      return this.fallbackClassification(message, context);
+      const fallback = this.fallbackClassification(message, context);
+      console.log('Fallback classification result:', fallback);
+      return fallback;
     }
   }
 
@@ -225,31 +240,55 @@ Classify the intent and extract entities.`;
     }
 
     // Check for CONFIRM intent - includes explicit itinerary generation requests
-    if (
-      lowerMessage.includes('yes') ||
-      lowerMessage.includes('correct') ||
-      lowerMessage.includes('confirm') ||
-      lowerMessage.includes('finalize') ||
-      lowerMessage.includes('finalise') ||
-      lowerMessage.includes('go ahead') ||
-      lowerMessage.includes('that works') ||
-      lowerMessage.includes('sounds good') ||
-      lowerMessage.includes('proceed') ||
-      lowerMessage.includes('okay') ||
-      lowerMessage.includes('ok') ||
-      // Explicit itinerary generation requests (when trip is complete)
-      (lowerMessage.includes('generate') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
-      (lowerMessage.includes('get') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
-      (lowerMessage.includes('create') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
-      (lowerMessage.includes('build') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
-      (lowerMessage.includes('show') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
-      lowerMessage.includes('get me the itinerary') ||
-      lowerMessage.includes('generate the itinerary') ||
-      lowerMessage.includes('create the itinerary')
-    ) {
+    // This MUST catch all variations of "share itinerary", "generate itinerary", "build itinerary", etc.
+    const confirmKeywords = [
+      'yes', 'correct', 'confirm', 'finalize', 'finalise', 'go ahead',
+      'that works', 'sounds good', 'proceed', 'okay', 'ok'
+    ];
+    
+    const itineraryActionKeywords = [
+      'generate', 'get', 'create', 'build', 'show', 'share', 'call'
+    ];
+    
+    const itineraryKeywords = [
+      'itinerary', 'plan', 'trip'
+    ];
+    
+    // Check for simple confirmations
+    if (confirmKeywords.some(k => lowerMessage.includes(k))) {
       return {
         intent: UserIntent.CONFIRM,
         confidence: 0.9,
+        entities: {},
+        requiresClarification: false,
+      };
+    }
+    
+    // Check for explicit itinerary generation requests
+    // Examples: "generate itinerary", "share the itinerary", "call the itinerary builder tool"
+    const hasItineraryAction = itineraryActionKeywords.some(action => 
+      lowerMessage.includes(action) && 
+      (itineraryKeywords.some(it => lowerMessage.includes(it)) || 
+       lowerMessage.includes('builder') ||
+       lowerMessage.includes('tool'))
+    );
+    
+    // Also check for phrases like "please share", "now please generate", "without delay"
+    const hasUrgentRequest = (
+      (lowerMessage.includes('please') || lowerMessage.includes('now')) &&
+      (lowerMessage.includes('share') || lowerMessage.includes('generate') || lowerMessage.includes('build'))
+    ) || lowerMessage.includes('without') && (lowerMessage.includes('delay') || lowerMessage.includes('further'));
+    
+    if (hasItineraryAction || hasUrgentRequest || 
+        lowerMessage.includes('get me the itinerary') ||
+        lowerMessage.includes('generate the itinerary') ||
+        lowerMessage.includes('create the itinerary') ||
+        lowerMessage.includes('share the itinerary') ||
+        lowerMessage.includes('call the itinerary builder') ||
+        lowerMessage.includes('build the itinerary share it')) {
+      return {
+        intent: UserIntent.CONFIRM,
+        confidence: 0.95, // High confidence for explicit requests
         entities: {},
         requiresClarification: false,
       };

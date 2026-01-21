@@ -45,6 +45,7 @@ const REQUIRED_TRIP_FIELDS = ['city', 'duration'] as const;
 
 /**
  * STEP 2: Detect user confirmation intent (lightweight rules-based)
+ * This catches explicit requests to generate/share/build the itinerary
  */
 function isUserConfirming(message: string): boolean {
   const lowerMessage = message.toLowerCase();
@@ -60,6 +61,14 @@ function isUserConfirming(message: string): boolean {
     'create itinerary',
     'build itinerary',
     'show itinerary',
+    'share itinerary',
+    'share the itinerary',
+    'please share',
+    'please share the itinerary',
+    'call the itinerary builder',
+    'call the itinerary builder tool',
+    'build the itinerary',
+    'build the itinerary share it',
     'that\'s right',
     'correct',
     'sounds good',
@@ -68,7 +77,36 @@ function isUserConfirming(message: string): boolean {
     'ok',
     'confirm',
     'finalize',
+    'without any delay',
+    'without further delay',
+    'now please',
+    'now please generate',
+    'now please share',
   ];
+
+  // Check for explicit itinerary generation requests
+  const hasItineraryKeywords = 
+    lowerMessage.includes('itinerary') || 
+    lowerMessage.includes('plan') ||
+    lowerMessage.includes('share') ||
+    lowerMessage.includes('generate') ||
+    lowerMessage.includes('build') ||
+    lowerMessage.includes('create') ||
+    lowerMessage.includes('show') ||
+    lowerMessage.includes('get');
+  
+  const hasActionKeywords = 
+    lowerMessage.includes('please') ||
+    lowerMessage.includes('now') ||
+    lowerMessage.includes('proceed') ||
+    lowerMessage.includes('go ahead') ||
+    lowerMessage.includes('call') ||
+    lowerMessage.includes('tool');
+
+  // If message contains both itinerary keywords AND action keywords, it's a confirmation
+  if (hasItineraryKeywords && (hasActionKeywords || confirmations.some(p => lowerMessage.includes(p)))) {
+    return true;
+  }
 
   return confirmations.some(p => lowerMessage.includes(p));
 }
@@ -128,11 +166,57 @@ export class Orchestrator {
 
     // Step 2: Route user intent
     // LLM is used HERE for intent classification (single LLM agent)
-    console.log('Classifying intent...');
-    const intentClassification = await this.intentRouter.classifyIntent(
-      input.message,
-      context
-    );
+    console.log('Classifying intent for message:', input.message);
+    let intentClassification: any;
+    try {
+      intentClassification = await this.intentRouter.classifyIntent(
+        input.message,
+        context
+      );
+    } catch (error) {
+      console.error('CRITICAL: Intent classification failed:', error);
+      // Use fallback - treat as CONFIRM if message contains itinerary keywords
+      const lowerMessage = input.message.toLowerCase();
+      if (lowerMessage.includes('itinerary') || lowerMessage.includes('share') || lowerMessage.includes('generate') || lowerMessage.includes('build')) {
+        console.log('Using emergency fallback: CONFIRM intent');
+        intentClassification = {
+          intent: 'CONFIRM',
+          confidence: 0.8,
+          entities: {},
+          requiresClarification: false,
+        };
+      } else {
+        intentClassification = {
+          intent: 'PROVIDE_PREFERENCE',
+          confidence: 0.5,
+          entities: {},
+          requiresClarification: false,
+        };
+      }
+    }
+    
+    if (!intentClassification || !intentClassification.intent) {
+      console.error('CRITICAL: Intent classification returned undefined or invalid result');
+      console.error('Classification result:', intentClassification);
+      // Emergency fallback
+      const lowerMessage = input.message.toLowerCase();
+      if (lowerMessage.includes('itinerary') || lowerMessage.includes('share') || lowerMessage.includes('generate') || lowerMessage.includes('build')) {
+        intentClassification = {
+          intent: 'CONFIRM',
+          confidence: 0.8,
+          entities: {},
+          requiresClarification: false,
+        };
+      } else {
+        intentClassification = {
+          intent: 'PROVIDE_PREFERENCE',
+          confidence: 0.5,
+          entities: {},
+          requiresClarification: false,
+        };
+      }
+    }
+    
     console.log('Intent classified:', {
       intent: intentClassification.intent,
       confidence: intentClassification.confidence,
@@ -155,6 +239,15 @@ export class Orchestrator {
       });
     }
 
+    // STEP 2 & 3: Detect and set user confirmation flag BEFORE state transitions
+    const isConfirming = isUserConfirming(input.message);
+    if (isConfirming) {
+      console.log('User confirmation detected → userConfirmed = true');
+      context = await this.stateManager.updateContext(context, {
+        userConfirmed: true,
+      });
+    }
+    
     // Step 3: Handle state transitions BEFORE tool decisions (so tool decisions use correct state)
     const stateBeforeTransition = context.state;
     context = await this.handleStateTransition(context, intentClassification.intent);
@@ -162,6 +255,7 @@ export class Orchestrator {
       from: stateBeforeTransition,
       to: context.state,
       intent: intentClassification.intent,
+      userConfirmed: context.userConfirmed,
       canProceedToConfirmation: this.stateManager.canProceedToConfirmation(context),
     });
 
