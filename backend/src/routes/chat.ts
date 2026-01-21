@@ -23,12 +23,13 @@ function getOrchestrator(): Orchestrator {
     orchestratorInstance = new Orchestrator();
     
     // Register all MCP tools
-    orchestratorInstance.registerTool(poiSearchTool);
+    // PHASE 4: Temporarily DISABLE POI search (for sanity - Overpass APIs are flaky)
+    // orchestratorInstance.registerTool(poiSearchTool);
     orchestratorInstance.registerTool(itineraryBuilderTool);
     orchestratorInstance.registerTool(itineraryEditorTool);
     
     console.log('Orchestrator initialized with tools:', {
-      poiSearch: !!poiSearchTool,
+      poiSearch: false, // PHASE 4: Disabled
       itineraryBuilder: !!itineraryBuilderTool,
       itineraryEditor: !!itineraryEditorTool,
     });

@@ -54,6 +54,16 @@ export class ToolOrchestrator {
     context: ConversationContext,
     intent: UserIntent
   ): ToolCallDecision[] {
+    // PHASE 1: Disable tool calls when trip is incomplete
+    const isTripComplete = Boolean(context.preferences.city && context.preferences.duration);
+    if (!isTripComplete && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) {
+      console.log('Tool calls DISABLED - trip incomplete:', {
+        hasCity: !!context.preferences.city,
+        hasDuration: !!context.preferences.duration,
+      });
+      return []; // No tools allowed
+    }
+    
     const decisions: ToolCallDecision[] = [];
 
     // Decision logic based on state and intent
@@ -64,18 +74,8 @@ export class ToolOrchestrator {
         if (intent === UserIntent.CONFIRM) {
           const hasCityAndDuration = context.preferences.city && context.preferences.duration;
           if (hasCityAndDuration) {
-            // User explicitly confirmed - call POI Search and Itinerary Builder
-            decisions.push({
-              shouldCall: true,
-              toolName: 'poi_search',
-              toolInput: {
-                city: context.preferences.city,
-                interests: context.preferences.interests || [],
-                constraints: context.preferences.constraints || [],
-              },
-              reason: 'User explicitly confirmed, need to search for POIs',
-            });
-
+            // PHASE 4: POI search temporarily disabled
+            // User explicitly confirmed - call Itinerary Builder directly (no POI search)
             decisions.push({
               shouldCall: true,
               toolName: 'itinerary_builder',
@@ -83,10 +83,12 @@ export class ToolOrchestrator {
                 tripId: context.tripId, // Added tripId - required for saving itinerary
                 city: context.preferences.city,
                 duration: context.preferences.duration,
+                // PHASE 2: Remove duration default - must come from user
+                // PHASE 2: Remove startDate default - must come from user or be explicitly set
                 startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
                 pace: context.preferences.pace || 'moderate',
               },
-              reason: 'After POI search, build itinerary',
+              reason: 'User explicitly confirmed, building itinerary',
             });
           } else {
             decisions.push({

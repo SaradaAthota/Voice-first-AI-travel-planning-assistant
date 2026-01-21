@@ -40,6 +40,9 @@ import { ItineraryOutput } from '../mcp-tools/itinerary-builder/types';
 import { runItineraryEvaluations } from '../evaluations/eval-runner';
 import { EvalContext } from '../evaluations/types';
 
+// PHASE 1: Define REQUIRED trip fields (hard-coded, not in prompt)
+const REQUIRED_TRIP_FIELDS = ['city', 'duration'] as const;
+
 export class Orchestrator {
   private stateManager: ConversationStateManager;
   private intentRouter: IntentRouter;
@@ -131,6 +134,43 @@ export class Orchestrator {
       intent: intentClassification.intent,
       canProceedToConfirmation: this.stateManager.canProceedToConfirmation(context),
     });
+
+    // PHASE 1: Validate trip completeness BEFORE tool decisions
+    const isTripComplete = this.isTripComplete(context);
+    console.log('Trip complete?', isTripComplete, {
+      hasCity: !!context.preferences.city,
+      hasDuration: !!context.preferences.duration,
+      city: context.preferences.city,
+      duration: context.preferences.duration,
+    });
+
+    // PHASE 1: HARD STOP if trip is incomplete - ask follow-up question and return
+    if (!isTripComplete && (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS)) {
+      const missingFields = REQUIRED_TRIP_FIELDS.filter(
+        (field) => !context.preferences[field as keyof typeof context.preferences]
+      );
+      console.log('Follow-up required - missing fields:', missingFields);
+      console.log('Asking follow-up question, stopping execution (HARD STOP)');
+      
+      // Compose follow-up question using ResponseComposer
+      const followUpResponse = await this.responseComposer.compose(
+        context,
+        [],
+        input.message
+      );
+      
+      // Update context to persist the state
+      await this.stateManager.updateContext(context, {
+        lastIntent: intentClassification.intent,
+      });
+
+      return {
+        response: followUpResponse,
+        context,
+        toolCalls: [],
+        stateTransition: undefined,
+      };
+    }
 
     // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
@@ -526,6 +566,14 @@ export class Orchestrator {
     }
     
     return null;
+  }
+
+  /**
+   * PHASE 1: Check if trip is complete (has all required fields)
+   * Hard-coded validation - not in prompt
+   */
+  private isTripComplete(context: ConversationContext): boolean {
+    return Boolean(context.preferences.city && context.preferences.duration);
   }
 
   /**
