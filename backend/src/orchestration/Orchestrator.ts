@@ -347,7 +347,33 @@ export class Orchestrator {
       hasCity: !!context.preferences.city,
       hasDuration: !!context.preferences.duration,
       userConfirmed: context.userConfirmed,
+      questionsAsked: context.questionsAsked || 0,
     });
+
+    // CRITICAL: Ask follow-up questions even when trip is COMPLETE (has city + duration)
+    // This ensures we ask about interests, pace, preferences before generating itinerary
+    if (!readyToGenerate && 
+        (context.state === ConversationState.COLLECTING_PREFS || context.state === ConversationState.INIT) &&
+        (context.questionsAsked || 0) < 6) {
+      console.log('Trip is complete but user not confirmed - asking follow-up question');
+      const followUpResponse = await this.responseComposer.compose(
+        context,
+        [],
+        input.message
+      );
+      
+      // Update context to persist the state (questionsAsked already incremented above)
+      context = await this.stateManager.updateContext(context, {
+        lastIntent: intentClassification.intent,
+      });
+
+      return {
+        response: followUpResponse,
+        context,
+        toolCalls: [],
+        stateTransition: undefined,
+      };
+    }
 
     // Step 4: Decide tool calls (ORCHESTRATOR decides, not LLM)
     console.log('Deciding tool calls...');
