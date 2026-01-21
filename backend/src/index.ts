@@ -24,20 +24,20 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, Postman, etc.) in development only
-    if (!origin && config.env === 'development') {
+    // ✅ Allow server-to-server calls (n8n, cron, backend-to-backend) - no origin header
+    // This is critical for n8n Cloud webhooks and other server-to-server communication
+    if (!origin) {
       return callback(null, true);
     }
     
-    // Check if origin is allowed
-    if (origin && allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else if (origin) {
-      console.warn(`CORS: Blocked request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    } else {
-      callback(new Error('Origin not provided'));
+    // ✅ Allow known frontends
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
+    
+    // Block unknown origins
+    console.warn(`CORS: Blocked request from origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
