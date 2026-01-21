@@ -629,25 +629,8 @@ export class Orchestrator {
       });
     } else {
       // Use regular ResponseComposer for other states
-      // Increment question count if we're in COLLECTING_PREFS state and asking a question (no tools called)
-      if (context.state === ConversationState.COLLECTING_PREFS && orchestrationResult.toolCalls.length === 0) {
-        const questionsAsked = (context.questionsAsked || 0) + 1;
-        context = await this.stateManager.updateContext(context, {
-          questionsAsked: questionsAsked,
-        });
-        
-        console.log(`Question count: ${questionsAsked} of 6`);
-        
-        // If we've reached max questions, transition to CONFIRMING
-        if (questionsAsked >= 6) {
-          console.log(`Maximum 6 questions reached - transitioning to CONFIRMING state`);
-          context = await this.stateManager.transitionTo(
-            context,
-            ConversationState.CONFIRMING,
-            `Maximum 6 questions asked`
-          );
-        }
-      }
+      // NOTE: questionsAsked is now incremented earlier in the process (before tool decisions)
+      // This ensures it works for both complete and incomplete trips
       
       response = await this.responseComposer.composeResponse(
         context,
