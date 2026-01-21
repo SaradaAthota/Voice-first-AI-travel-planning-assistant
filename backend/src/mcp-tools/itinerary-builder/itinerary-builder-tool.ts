@@ -60,19 +60,28 @@ export class ItineraryBuilderTool implements MCPTool {
       }
 
       // Step 1: Cluster POIs by proximity
-      // For reduce_travel edits, use tighter clustering
-      const maxClusterDistance = builderInput.editTarget?.type === 'reduce_travel' ? 3 : 5;
-      const clusters = clusterPOIsByProximity(
-        builderInput.pois,
-        this.getMaxClusterSize(builderInput.pace),
-        maxClusterDistance
-      );
+      // PHASE 4: Handle empty POIs array gracefully (POI search disabled)
+      let poisPerDay: POI[][];
+      
+      if (builderInput.pois.length === 0) {
+        console.warn('No POIs provided (POI search disabled) - generating basic itinerary structure');
+        // Generate empty POI arrays for each day
+        poisPerDay = Array(builderInput.duration).fill(null).map(() => []);
+      } else {
+        // For reduce_travel edits, use tighter clustering
+        const maxClusterDistance = builderInput.editTarget?.type === 'reduce_travel' ? 3 : 5;
+        const clusters = clusterPOIsByProximity(
+          builderInput.pois,
+          this.getMaxClusterSize(builderInput.pace),
+          maxClusterDistance
+        );
 
-      // Step 2: Distribute clusters across days
-      let poisPerDay = this.distributePOIsAcrossDays(
-        clusters,
-        builderInput.duration
-      );
+        // Step 2: Distribute clusters across days
+        poisPerDay = this.distributePOIsAcrossDays(
+          clusters,
+          builderInput.duration
+        );
+      }
 
       // Step 2b: Apply edit instructions
       if (builderInput.editTarget && existingItinerary) {
@@ -170,9 +179,15 @@ export class ItineraryBuilderTool implements MCPTool {
    * Validate and parse input
    */
   private validateInput(input: MCPToolInput): ItineraryBuilderInput {
-    if (!input.pois || !Array.isArray(input.pois) || input.pois.length === 0) {
-      throw new Error('POIs array is required and must not be empty');
+    // PHASE 4: Allow empty POIs array (POI search is temporarily disabled)
+    // The tool will generate a basic itinerary structure even without POIs
+    if (!input.pois || !Array.isArray(input.pois)) {
+      console.warn('POIs array is missing or invalid, using empty array (POI search disabled)');
+      input.pois = [];
     }
+    
+    // Only throw error if we're not in a graceful fallback mode
+    // For now, allow empty POIs and generate basic structure
 
     if (!input.duration || typeof input.duration !== 'number' || input.duration < 1) {
       throw new Error('Duration must be a positive number');

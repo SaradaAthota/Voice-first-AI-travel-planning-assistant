@@ -242,6 +242,8 @@ export class Orchestrator {
     // STEP 5: Force tool execution when ready (MUST run before generic heuristics)
     if (readyToGenerate) {
       console.log('READY_TO_GENERATE = true → Forcing itinerary_builder tool call');
+      // PHASE 4: POI search disabled - use empty POIs array (tool will generate basic itinerary)
+      // The tool requires POIs, but we'll pass empty array and let it handle gracefully
       toolDecisions = [{
         shouldCall: true,
         toolName: 'itinerary_builder',
@@ -251,6 +253,7 @@ export class Orchestrator {
           duration: context.preferences.duration,
           startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
           pace: context.preferences.pace || 'moderate',
+          pois: [], // PHASE 4: Empty POIs array since POI search is disabled
         },
         reason: 'User confirmed and all required data available - READY_TO_GENERATE',
       }];
