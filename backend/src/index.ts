@@ -14,18 +14,24 @@ const app: Express = express();
 
 // Middleware
 // CORS configuration - restrict to allowed origins in production
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
-  : process.env.FRONTEND_URL 
-    ? [process.env.FRONTEND_URL]
-    : config.env === 'production' 
-      ? [] // No default in production - must be explicitly set
-      : ['http://localhost:5173']; // Default for development
+// Build allowed origins list from environment variables
+const allowedOrigins: string[] = [];
+if (process.env.ALLOWED_ORIGINS) {
+  allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()));
+}
+if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL)) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+// Add localhost for development
+if (config.env !== 'production' && !allowedOrigins.includes('http://localhost:5173')) {
+  allowedOrigins.push('http://localhost:5173');
+}
 
 console.log('CORS configuration:', {
   allowedOrigins: allowedOrigins.length > 0 ? allowedOrigins : 'none (allowing server-to-server)',
   hasFrontendUrl: !!process.env.FRONTEND_URL,
   hasAllowedOrigins: !!process.env.ALLOWED_ORIGINS,
+  environment: config.env,
 });
 
 app.use(cors({
@@ -39,20 +45,15 @@ app.use(cors({
     }
     
     // ✅ Allow known frontends
-    if (allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       console.log('CORS: Allowing request from allowed origin:', origin);
-      return callback(null, true);
-    }
-    
-    // If no allowed origins configured but we have a frontend URL, allow it
-    if (allowedOrigins.length === 0 && process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
-      console.log('CORS: Allowing request from FRONTEND_URL:', origin);
       return callback(null, true);
     }
     
     // Block unknown origins
     console.warn(`CORS: Blocked request from origin: ${origin}`);
-    return callback(new Error('Not allowed by CORS'));
+    console.warn(`CORS: Allowed origins are: ${allowedOrigins.join(', ') || 'NONE'}`);
+    return callback(new Error(`Not allowed by CORS. Origin: ${origin} not in allowed list.`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
