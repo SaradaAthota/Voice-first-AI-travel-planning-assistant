@@ -59,11 +59,12 @@ export class ToolOrchestrator {
     // Decision logic based on state and intent
     switch (context.state) {
       case ConversationState.CONFIRMING:
-        // Handle both CONFIRM and PLAN_TRIP intents in CONFIRMING state
-        if (intent === UserIntent.CONFIRM || intent === UserIntent.PLAN_TRIP) {
+        // ONLY generate itinerary if user EXPLICITLY confirms (says "yes", "correct", "go ahead", etc.)
+        // Do NOT generate for PLAN_TRIP intent - wait for explicit confirmation
+        if (intent === UserIntent.CONFIRM) {
           const hasCityAndDuration = context.preferences.city && context.preferences.duration;
           if (hasCityAndDuration) {
-            // User confirmed or wants to plan - call POI Search and Itinerary Builder
+            // User explicitly confirmed - call POI Search and Itinerary Builder
             decisions.push({
               shouldCall: true,
               toolName: 'poi_search',
@@ -72,7 +73,7 @@ export class ToolOrchestrator {
                 interests: context.preferences.interests || [],
                 constraints: context.preferences.constraints || [],
               },
-              reason: 'User confirmed/wants to plan, need to search for POIs',
+              reason: 'User explicitly confirmed, need to search for POIs',
             });
 
             decisions.push({
@@ -93,6 +94,12 @@ export class ToolOrchestrator {
               reason: 'CONFIRMING state but missing city or duration',
             });
           }
+        } else {
+          // In CONFIRMING state but user hasn't confirmed yet - don't generate itinerary
+          decisions.push({
+            shouldCall: false,
+            reason: 'CONFIRMING state - waiting for user explicit confirmation before generating itinerary',
+          });
         }
         break;
 
