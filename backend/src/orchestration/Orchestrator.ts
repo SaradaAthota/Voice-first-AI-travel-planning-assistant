@@ -149,8 +149,11 @@ export class Orchestrator {
       const missingFields = REQUIRED_TRIP_FIELDS.filter(
         (field) => !context.preferences[field as keyof typeof context.preferences]
       );
+      const questionsAsked = (context.questionsAsked || 0) + 1;
+      const maxQuestions = 6;
+      
       console.log('Follow-up required - missing fields:', missingFields);
-      console.log('Asking follow-up question, stopping execution (HARD STOP)');
+      console.log(`Asking follow-up question ${questionsAsked} of ${maxQuestions}, stopping execution (HARD STOP)`);
       
       // Compose follow-up question using ResponseComposer
       const followUpResponse = await this.responseComposer.compose(
@@ -159,10 +162,21 @@ export class Orchestrator {
         input.message
       );
       
-      // Update context to persist the state
-      await this.stateManager.updateContext(context, {
+      // Update context to persist the state and increment question count
+      context = await this.stateManager.updateContext(context, {
         lastIntent: intentClassification.intent,
+        questionsAsked: questionsAsked,
       });
+
+      // If we've reached max questions, transition to CONFIRMING
+      if (questionsAsked >= maxQuestions) {
+        console.log(`Maximum ${maxQuestions} questions reached - transitioning to CONFIRMING state`);
+        context = await this.stateManager.transitionTo(
+          context,
+          ConversationState.CONFIRMING,
+          `Maximum ${maxQuestions} questions asked`
+        );
+      }
 
       return {
         response: followUpResponse,

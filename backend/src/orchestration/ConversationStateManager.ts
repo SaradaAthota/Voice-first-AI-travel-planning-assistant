@@ -70,6 +70,7 @@ export class ConversationStateManager {
       },
       collectedFields: [],
       missingFields: this.getRequiredFields(),
+      questionsAsked: 0,
     };
 
     // Persist to database
