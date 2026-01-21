@@ -271,11 +271,13 @@ export class Orchestrator {
 
     // CRITICAL FIX: Increment questionsAsked for ALL follow-up questions, not just when trip is incomplete
     // This ensures the 6-question limit works even when trip is complete
+    // IMPORTANT: Do NOT increment if user has confirmed (intent === 'CONFIRM') - user wants to generate now, not ask more questions
     const isAskingFollowUp = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
                              intentClassification.intent !== 'CONFIRM' &&
                              intentClassification.intent !== 'EDIT_ITINERARY' &&
                              intentClassification.intent !== 'EXPLAIN' &&
-                             intentClassification.intent !== 'SEND_EMAIL';
+                             intentClassification.intent !== 'SEND_EMAIL' &&
+                             !context.userConfirmed; // Don't increment if user already confirmed (early confirmation)
     
     if (isAskingFollowUp) {
       const questionsAsked = (context.questionsAsked || 0) + 1;
@@ -784,6 +786,19 @@ export class Orchestrator {
    */
   private isTripComplete(context: ConversationContext): boolean {
     return Boolean(context.preferences.city && context.preferences.duration);
+  }
+
+  /**
+   * STEP 4: Define "READY TO BUILD ITINERARY" - core intelligence rule
+   * This checks: city, duration, AND user confirmation
+   * User can confirm early (after 2-3 questions) OR after 6 questions (auto-confirm)
+   */
+  private shouldGenerateItinerary(context: ConversationContext): boolean {
+    return Boolean(
+      context.preferences.city &&
+      context.preferences.duration &&
+      context.userConfirmed === true
+    );
   }
 
   /**
