@@ -216,7 +216,7 @@ export class ToolOrchestrator {
     context: ConversationContext
   ): Promise<ToolOrchestrationResult> {
     const toolCalls: ToolCallResult[] = [];
-    let poiSearchResults: any = null;
+    // PHASE 4: POI search disabled - removed poiSearchResults tracking
 
     for (const decision of decisions) {
       if (!decision.shouldCall || !decision.toolName) {
@@ -229,23 +229,11 @@ export class ToolOrchestrator {
         continue;
       }
 
-      // Prepare tool input - if itinerary_builder, add POIs from previous POI search
+      // Prepare tool input
+      // PHASE 4: POI search disabled - no POI injection needed
       // If itinerary_editor, load existing itinerary
       let toolInput = decision.toolInput || {};
-      if (decision.toolName === 'itinerary_builder' && poiSearchResults) {
-        // POI search returns { pois: [...], city: ..., totalFound: ... }
-        // Extract the pois array from the result
-        const poisArray = poiSearchResults.pois || (Array.isArray(poiSearchResults) ? poiSearchResults : []);
-        console.log('Injecting POIs into itinerary_builder:', {
-          poiSearchResultType: typeof poiSearchResults,
-          hasPoisProperty: 'pois' in poiSearchResults,
-          poisCount: Array.isArray(poisArray) ? poisArray.length : 0,
-        });
-        toolInput = {
-          ...toolInput,
-          pois: poisArray,
-        };
-      } else if (decision.toolName === 'itinerary_editor' && context.tripId) {
+      if (decision.toolName === 'itinerary_editor' && context.tripId) {
         // Load existing itinerary for editor
         try {
           const { data: itineraryData } = await this.supabase
@@ -284,16 +272,7 @@ export class ToolOrchestrator {
 
       toolCalls.push(result);
 
-      // Store POI search results for itinerary builder
-      if (decision.toolName === 'poi_search' && result.output.success && result.output.data) {
-        poiSearchResults = result.output.data;
-        console.log('POI search results stored:', {
-          hasPois: 'pois' in poiSearchResults,
-          poisCount: poiSearchResults.pois ? poiSearchResults.pois.length : 0,
-          city: poiSearchResults.city,
-          totalFound: poiSearchResults.totalFound,
-        });
-      }
+      // PHASE 4: POI search disabled - no results to store
     }
 
     // Determine if LLM processing is needed after tool calls
