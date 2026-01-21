@@ -67,6 +67,8 @@ playwright-report/
 *.temp
 .cache/
 .temp/
+temp/
+**/temp/
 
 # Package manager locks (optional - uncomment if you want to ignore)
 # package-lock.json

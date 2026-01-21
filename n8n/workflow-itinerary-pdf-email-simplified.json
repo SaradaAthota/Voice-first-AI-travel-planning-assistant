@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract email, city from JSON and convert base64 PDF to binary\nconst input = $input.item.json;\n\n// Extract form fields (now directly in JSON)\nconst email = input.email || '';\nconst city = input.city || 'Unknown City';\nconst duration = input.duration || '';\nconst startDate = input.startDate || '';\n\n// Get base64 PDF data\nlet pdfBase64 = null;\nif (input.pdf && input.pdf.data) {\n  pdfBase64 = input.pdf.data; // Already base64 from backend\n  console.log('PDF base64 data received, length:', pdfBase64.length);\n} else {\n  throw new Error('PDF data not found in input. Input keys: ' + Object.keys(input).join(', '));\n}\n\n// Validate email\nif (!email) {\n  throw new Error('Email not found in webhook input. Input structure: ' + JSON.stringify(Object.keys(input)));\n}\n\n// Return JSON fields and binary PDF (n8n expects base64 string for binary data)\nreturn {\n  json: {\n    email: email,\n    city: city,\n    duration: duration,\n    startDate: startDate\n  },\n  binary: {\n    'itinerary.pdf': {\n      data: pdfBase64, // base64 string (n8n will handle conversion)\n      mimeType: 'application/pdf',\n      fileName: 'itinerary.pdf'\n    }\n  }\n};"
+        "jsCode": "// Extract email, city from JSON and convert base64 PDF to binary\nconst webhookInput = $input.item.json;\n\n// n8n webhook puts JSON payload in 'body' property\n// Check both body and direct properties\nconst input = webhookInput.body || webhookInput;\n\nconsole.log('=== DEBUG: Webhook Input Structure ===');\nconsole.log('Webhook keys:', Object.keys(webhookInput));\nconsole.log('Input keys:', Object.keys(input));\nconsole.log('Has body?', !!webhookInput.body);\nconsole.log('Has pdf?', !!(input.pdf && input.pdf.data));\n\n// Extract form fields (now directly in JSON)\nconst email = input.email || '';\nconst city = input.city || 'Unknown City';\nconst duration = input.duration || '';\nconst startDate = input.startDate || '';\n\n// Get base64 PDF data\nlet pdfBase64 = null;\nif (input.pdf && input.pdf.data) {\n  pdfBase64 = input.pdf.data; // Already base64 from backend\n  console.log('PDF base64 data received, length:', pdfBase64.length);\n} else {\n  throw new Error('PDF data not found in input. Input keys: ' + Object.keys(input).join(', ') + '. Webhook keys: ' + Object.keys(webhookInput).join(', '));\n}\n\n// Validate email\nif (!email) {\n  throw new Error('Email not found in webhook input. Input structure: ' + JSON.stringify(Object.keys(input)));\n}\n\n// Convert base64 to Buffer for n8n binary format\nconst pdfBuffer = Buffer.from(pdfBase64, 'base64');\nconsole.log('PDF buffer created, size:', pdfBuffer.length, 'bytes');\n\n// Return JSON fields and binary PDF\n// n8n Code node expects binary data as Buffer with data property\nreturn {\n  json: {\n    email: email,\n    city: city,\n    duration: duration,\n    startDate: startDate\n  },\n  binary: {\n    'itinerary.pdf': {\n      data: pdfBuffer, // Buffer object (n8n requires this)\n      mimeType: 'application/pdf',\n      fileName: 'itinerary.pdf'\n    }\n  }\n};"
       },
       "id": "extract-and-convert",
       "name": "Extract & Convert PDF",
@@ -57,7 +57,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { \"success\": true, \"message\": \"Itinerary PDF sent to \" + $json.email } }}"
+        "responseBody": "={{ { \"success\": true, \"message\": \"Itinerary PDF sent successfully\" } }}"
       },
       "id": "respond-to-webhook",
       "name": "Respond to Webhook",
