@@ -124,16 +124,16 @@ export class PolicyGuards {
     const poiSearchCall = toolCalls.find((call) => call.toolName === 'poi_search');
 
     if (!poiSearchCall) {
+      // PHASE 4: POI search is disabled - this is expected and allowed
       // No POI search, so no validation needed
       return { allowed: true };
     }
 
     if (!poiSearchCall.output.success) {
-      return {
-        allowed: false,
-        reason: 'POI search failed',
-        alternative: 'Fix POI search tool error',
-      };
+      // PHASE 4: POI search is disabled - if it was called and failed, that's expected
+      // Don't fail the policy check - just log it
+      console.warn('POI search was called but failed (expected - POI search is disabled)');
+      return { allowed: true }; // Allow it - POI search is optional
     }
 
     // Check if POIs have OSM IDs or references

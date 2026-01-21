@@ -198,11 +198,8 @@ export class ToolOrchestrator {
           missingFields: context.missingFields,
           reason: 'Must ask follow-up questions before generating itinerary',
         });
-        decisions.push({
-          shouldCall: false,
-          reason: `State ${context.state} - collecting preferences, asking clarifying questions. Do NOT generate itinerary yet, even if all required fields are collected.`,
-        });
-        break;
+        // PHASE 4: Return empty array - no tools should be called in this state (no POI search, no itinerary builder)
+        return []; // Explicitly return empty - must ask follow-up questions first
 
       default:
         // Other states don't need tools
@@ -230,6 +227,12 @@ export class ToolOrchestrator {
 
     for (const decision of decisions) {
       if (!decision.shouldCall || !decision.toolName) {
+        continue;
+      }
+
+      // PHASE 4: Skip POI search - it's disabled
+      if (decision.toolName === 'poi_search') {
+        console.warn('POI search tool call skipped - POI search is disabled');
         continue;
       }
 
