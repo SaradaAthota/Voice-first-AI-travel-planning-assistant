@@ -14,8 +14,10 @@ export type EditType = 'relax' | 'swap' | 'add' | 'remove' | 'reduce_travel';
  * Edit parameters
  */
 export interface EditParams {
-  // For 'swap': new POI to swap in
+  // For 'swap': new POI to swap in (for activity swap)
   newPOI?: POI;
+  // For 'swap': day number to swap with (for day swap)
+  swapDay?: number;
   // For 'add': POI to add
   poiToAdd?: POI;
   // For 'remove': activity index or POI ID

@@ -181,9 +181,16 @@ export function ItineraryDisplay({ itinerary, tripId, className = '' }: Itinerar
 
       {/* Days */}
       <div>
-        {itinerary.days.map((day) => (
-          <ItineraryDay key={day.day} day={day} />
-        ))}
+        {itinerary.days && Array.isArray(itinerary.days) && itinerary.days.length > 0 ? (
+          itinerary.days.map((day) => (
+            <ItineraryDay key={day.day} day={day} />
+          ))
+        ) : (
+          <div className="p-4 text-center text-gray-500">
+            <p>No days scheduled in this itinerary.</p>
+            <p className="text-sm mt-2">Please try generating the itinerary again.</p>
+          </div>
+        )}
       </div>
     </div>
   );

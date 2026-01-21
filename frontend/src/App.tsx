@@ -173,6 +173,13 @@ function App() {
             });
             
             if (data.itinerary) {
+              // Validate itinerary structure before setting state
+              if (!data.itinerary.days || !Array.isArray(data.itinerary.days)) {
+                console.error('Invalid itinerary structure - days missing or not an array:', data.itinerary);
+                setAssistantResponse('I encountered an error processing the itinerary. Please try again.');
+                return;
+              }
+              
               console.log('Itinerary received in response, setting directly');
               setItineraryFromResponse(data.itinerary);
               // Clear assistant response when itinerary is available

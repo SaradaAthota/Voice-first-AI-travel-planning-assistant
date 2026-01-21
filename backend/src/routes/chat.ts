@@ -95,12 +95,39 @@ router.post('/', async (req: Request, res: Response) => {
       });
       
       if (itineraryToolCall && itineraryToolCall.output.success) {
-        itinerary = itineraryToolCall.output.data as ItineraryOutput;
-        console.log('Itinerary extracted from tool call:', {
-          hasItinerary: !!itinerary,
-          city: itinerary?.city,
-          days: itinerary?.days?.length,
-        });
+        // Handle different tool output structures
+        if (itineraryEditorCall) {
+          // itinerary_editor returns { editedItinerary, changes, ... }
+          const editorData = itineraryToolCall.output.data as any;
+          if (editorData && editorData.editedItinerary) {
+            itinerary = editorData.editedItinerary as ItineraryOutput;
+            console.log('Itinerary extracted from editor call:', {
+              hasItinerary: !!itinerary,
+              city: itinerary?.city,
+              days: itinerary?.days?.length,
+              isArray: Array.isArray(itinerary?.days),
+            });
+          } else {
+            console.error('Editor call succeeded but editedItinerary is missing:', editorData);
+            itinerary = null;
+          }
+        } else {
+          // itinerary_builder returns ItineraryOutput directly
+          itinerary = itineraryToolCall.output.data as ItineraryOutput;
+          console.log('Itinerary extracted from builder call:', {
+            hasItinerary: !!itinerary,
+            city: itinerary?.city,
+            days: itinerary?.days?.length,
+            isArray: Array.isArray(itinerary?.days),
+          });
+        }
+        
+        // Validate itinerary structure before using
+        if (itinerary && (!itinerary.days || !Array.isArray(itinerary.days))) {
+          console.error('Invalid itinerary structure - days missing or not an array:', itinerary);
+          itinerary = null;
+        }
+        
         // Also collect citations from tool
         if (itineraryToolCall.output.citations && Array.isArray(itineraryToolCall.output.citations)) {
           allCitations.push(...itineraryToolCall.output.citations);

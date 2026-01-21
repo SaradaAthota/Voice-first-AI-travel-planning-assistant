@@ -41,10 +41,74 @@ export class ItineraryEditorTool implements MCPTool {
       // Validate and parse input
       const editorInput = this.validateInput(input);
 
-      // Step 1: Create a deep copy of the itinerary
+      // Step 1: Validate itinerary structure
+      if (!editorInput.itinerary || !editorInput.itinerary.days || !Array.isArray(editorInput.itinerary.days)) {
+        throw new Error('Invalid itinerary structure: days array is missing or invalid');
+      }
+
+      if (editorInput.itinerary.days.length === 0) {
+        throw new Error('Cannot edit itinerary: no days found');
+      }
+
+      // Step 2: Create a deep copy of the itinerary (IMMUTABLE update)
       const editedItinerary = JSON.parse(JSON.stringify(editorInput.itinerary)) as ItineraryOutput;
 
-      // Step 2: Find the target day
+      // Step 3: Handle day swap if editType is 'swap' and both days are specified
+      if (editorInput.editType === 'swap' && editorInput.editParams && editorInput.editParams.swapDay !== undefined) {
+        const swapDay = editorInput.editParams.swapDay;
+        const day1Index = editedItinerary.days.findIndex(d => d.day === editorInput.targetDay);
+        const day2Index = editedItinerary.days.findIndex(d => d.day === swapDay);
+        
+        if (day1Index === -1) {
+          throw new Error(`Day ${editorInput.targetDay} not found in itinerary`);
+        }
+        if (day2Index === -1) {
+          throw new Error(`Day ${swapDay} not found in itinerary`);
+        }
+        if (day1Index === day2Index) {
+          throw new Error('Cannot swap a day with itself');
+        }
+
+        // IMMUTABLE swap: create new array with swapped days
+        const newDays = [...editedItinerary.days];
+        [newDays[day1Index], newDays[day2Index]] = [newDays[day2Index], newDays[day1Index]];
+        
+        // Update day numbers to match new positions
+        newDays[day1Index].day = editorInput.targetDay;
+        newDays[day2Index].day = swapDay;
+        
+        editedItinerary.days = newDays;
+        
+        console.log(`Swapped day ${editorInput.targetDay} and day ${swapDay}`);
+        
+        // Recalculate totals for swapped days
+        this.recalculateDayTotals(editedItinerary.days[day1Index]);
+        this.recalculateDayTotals(editedItinerary.days[day2Index]);
+        
+        // Return early - swap is complete
+        editedItinerary.metadata.version = (editorInput.itinerary.metadata.version || 1) + 1;
+        editedItinerary.metadata.isEdit = true;
+        
+        // Save to database
+        if (editorInput.tripId) {
+          await this.saveItinerary(editorInput.tripId, editedItinerary);
+        }
+        
+        return {
+          success: true,
+          data: {
+            editedItinerary,
+            changes: {
+              type: 'swap',
+              day1: editorInput.targetDay,
+              day2: swapDay,
+            },
+          },
+          citations: [],
+        };
+      }
+
+      // Step 4: Find the target day (for non-swap edits)
       const targetDayIndex = editedItinerary.days.findIndex(
         d => d.day === editorInput.targetDay
       );

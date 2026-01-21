@@ -138,6 +138,7 @@ export class ToolOrchestrator {
                 editParams: {
                   targetTravelTime: context.editTarget.targetTravelTime,
                   poiName: context.editTarget.poiName,
+                  swapDay: context.editTarget.swapDay, // For day swaps
                 },
               },
               reason: 'User wants to edit itinerary, using itinerary_editor to modify existing itinerary',

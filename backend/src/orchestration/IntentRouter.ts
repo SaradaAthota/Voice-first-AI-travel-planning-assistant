@@ -121,9 +121,10 @@ IMPORTANT: If message contains "remove X from day Y", extract:
   - day: Y (the day number)
   - poiName: X (the POI name)
   
-If message contains "swap day X and day Y", extract:
+If message contains "swap day X and day Y" or "exchange day X and day Y", extract:
   - type: "swap"
   - day: X (the first day to swap)
+  - swapDay: Y (the second day to swap with)
 - email: Email address (for SEND_EMAIL intent, extract if mentioned in message, e.g., "send to john@example.com" or "email me at test@gmail.com")
 
 Return JSON with:

@@ -79,6 +79,7 @@ export interface EditTarget {
   type?: 'relax' | 'swap' | 'add' | 'remove' | 'reduce_travel';
   poiName?: string;                  // Name of POI to remove/add (e.g., "ambassador visit", "Chandragiri fort")
   targetTravelTime?: number;          // Target travel time in minutes (for reduce_travel)
+  swapDay?: number;                  // For swap: second day to swap with (e.g., "swap day 2 and day 3" -> day=2, swapDay=3)
 }
 
 // ============================================================================
