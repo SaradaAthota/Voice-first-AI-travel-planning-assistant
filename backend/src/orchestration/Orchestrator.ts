@@ -42,6 +42,50 @@ import { EvalContext } from '../evaluations/types';
 
 // PHASE 1: Define REQUIRED trip fields (hard-coded, not in prompt)
 const REQUIRED_TRIP_FIELDS = ['city', 'duration'] as const;
+const MAX_FOLLOW_UP_QUESTIONS = 6; // Hard limit for follow-up questions
+
+/**
+ * 1️⃣ isTripReady() Readiness Evaluator
+ * Checks if trip has enough information to generate itinerary
+ */
+function isTripReady(context: ConversationContext): boolean {
+  return Boolean(
+    context.preferences.city &&
+    context.preferences.duration &&
+    context.preferences.startDate &&
+    (
+      context.preferencesProvided === true ||
+      context.userSaidNoPreferences === true
+    )
+  );
+}
+
+/**
+ * Detect if user said "no preferences" or "you decide"
+ */
+function detectNoPreferences(message: string): boolean {
+  const lowerMessage = message.toLowerCase();
+  const noPreferencePhrases = [
+    'no preferences',
+    'you decide',
+    'best ones according to you',
+    'whatever you think',
+    'your choice',
+    'you choose',
+    'no specific preferences',
+    'any preferences',
+    'no particular preferences',
+  ];
+  return noPreferencePhrases.some(phrase => lowerMessage.includes(phrase));
+}
+
+/**
+ * Detect force-generate phrases (explicit user request to generate/share itinerary)
+ */
+function detectForceGenerate(message: string): boolean {
+  const forceGeneratePattern = /share.*itinerary|generate.*itinerary|without further delay|without any delay|now please.*itinerary|create.*itinerary.*now/i;
+  return forceGeneratePattern.test(message);
+}
 
 /**
  * STEP 2: Detect user confirmation intent (lightweight rules-based)
@@ -239,13 +283,25 @@ export class Orchestrator {
       });
     }
 
-    // STEP 2 & 3: Detect and set user confirmation flag BEFORE state transitions
+    // STEP 2 & 3: Detect user signals BEFORE state transitions
     const isConfirming = isUserConfirming(input.message);
+    const saidNoPreferences = detectNoPreferences(input.message);
+    let forceGenerate = detectForceGenerate(input.message);
+    
+    // Update context with detected signals
+    const contextUpdates: Partial<ConversationContext> = {};
     if (isConfirming) {
       console.log('User confirmation detected → userConfirmed = true');
-      context = await this.stateManager.updateContext(context, {
-        userConfirmed: true,
-      });
+      contextUpdates.userConfirmed = true;
+    }
+    if (saidNoPreferences) {
+      console.log('User said no preferences → userSaidNoPreferences = true');
+      contextUpdates.userSaidNoPreferences = true;
+      contextUpdates.preferencesProvided = true; // Treat as preferences provided
+    }
+    
+    if (Object.keys(contextUpdates).length > 0) {
+      context = await this.stateManager.updateContext(context, contextUpdates);
     }
     
     // Step 3: Handle state transitions BEFORE tool decisions (so tool decisions use correct state)
@@ -259,37 +315,95 @@ export class Orchestrator {
       canProceedToConfirmation: this.stateManager.canProceedToConfirmation(context),
     });
 
-    // PHASE 1: Validate trip completeness BEFORE tool decisions
-    const isTripComplete = this.isTripComplete(context);
-    console.log('Trip complete?', isTripComplete, {
+    // 6️⃣ Stop follow-up questions after itinerary is ready
+    if (context.hasItinerary) {
+      console.log('Itinerary already exists - skipping follow-up questions');
+      // Continue to handle the current intent (edit, explain, send email, etc.)
+    }
+
+    // 4️⃣ Fix Intent Arbitration (Critical Bug)
+    // SEND_EMAIL must NEVER run without itinerary
+    let resolvedIntent = intentClassification.intent;
+    if (resolvedIntent === UserIntent.SEND_EMAIL && !context.hasItinerary) {
+      console.log('SEND_EMAIL intent detected but no itinerary exists - converting to PLAN_TRIP');
+      resolvedIntent = UserIntent.PLAN_TRIP;
+      // Force generate itinerary first
+      forceGenerate = true;
+    }
+
+    // 3️⃣ Force Itinerary Generation on Explicit User Request
+    if (forceGenerate && isTripReady(context)) {
+      console.log('Force-generate detected and trip is ready - generating itinerary immediately');
+      context = await this.stateManager.updateContext(context, {
+        userConfirmed: true,
+      });
+      context = await this.stateManager.transitionTo(
+        context,
+        ConversationState.CONFIRMING,
+        'User explicitly requested itinerary generation'
+      );
+    }
+
+    // 2️⃣ Add Follow-up Question Hard Limit (Max 6)
+    const followUpCount = (context.followUpCount || 0);
+    const shouldIncrementFollowUp = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
+                                    resolvedIntent !== 'CONFIRM' &&
+                                    resolvedIntent !== 'EDIT_ITINERARY' &&
+                                    resolvedIntent !== 'EXPLAIN' &&
+                                    resolvedIntent !== 'SEND_EMAIL' &&
+                                    !context.hasItinerary &&
+                                    !context.userConfirmed;
+    
+    if (shouldIncrementFollowUp) {
+      const newFollowUpCount = followUpCount + 1;
+      context = await this.stateManager.updateContext(context, {
+        followUpCount: newFollowUpCount,
+        questionsAsked: (context.questionsAsked || 0) + 1,
+      });
+      console.log(`Follow-up count: ${newFollowUpCount} of ${MAX_FOLLOW_UP_QUESTIONS}`);
+    }
+
+    // Check if trip is ready
+    const tripReady = isTripReady(context);
+    console.log('Trip readiness check:', {
+      tripReady,
       hasCity: !!context.preferences.city,
       hasDuration: !!context.preferences.duration,
-      city: context.preferences.city,
-      duration: context.preferences.duration,
-      currentQuestionsAsked: context.questionsAsked || 0,
+      hasStartDate: !!context.preferences.startDate,
+      preferencesProvided: context.preferencesProvided,
+      userSaidNoPreferences: context.userSaidNoPreferences,
+      followUpCount: context.followUpCount || 0,
+      hasItinerary: context.hasItinerary,
     });
 
-    // SIMPLIFIED LOGIC: Ask up to 5 questions, then automatically generate itinerary
-    // Don't check trip completeness - just ask questions and generate
-    const MAX_QUESTIONS = 5; // Hard stop at 5 questions
-    
+    // 2️⃣ Force itinerary generation after 6 questions (hard limit)
+    const currentFollowUpCount = context.followUpCount || 0;
+    if (currentFollowUpCount >= MAX_FOLLOW_UP_QUESTIONS && !context.hasItinerary) {
+      console.log(`Maximum ${MAX_FOLLOW_UP_QUESTIONS} follow-up questions reached - forcing itinerary generation`);
+      context = await this.stateManager.updateContext(context, {
+        userConfirmed: true,
+        preferencesProvided: true, // Force as preferences provided
+      });
+      context = await this.stateManager.transitionTo(
+        context,
+        ConversationState.CONFIRMING,
+        `Maximum ${MAX_FOLLOW_UP_QUESTIONS} questions asked - auto-generating`
+      );
+    }
+
     // Check if we should ask a follow-up question
-    const shouldAskQuestion = (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
-                             intentClassification.intent !== 'CONFIRM' &&
-                             intentClassification.intent !== 'EDIT_ITINERARY' &&
-                             intentClassification.intent !== 'EXPLAIN' &&
-                             intentClassification.intent !== 'SEND_EMAIL' &&
+    const shouldAskQuestion = !context.hasItinerary &&
+                             (context.state === ConversationState.INIT || context.state === ConversationState.COLLECTING_PREFS) &&
+                             resolvedIntent !== 'CONFIRM' &&
+                             resolvedIntent !== 'EDIT_ITINERARY' &&
+                             resolvedIntent !== 'EXPLAIN' &&
+                             resolvedIntent !== 'SEND_EMAIL' &&
                              !context.userConfirmed &&
-                             (context.questionsAsked || 0) < MAX_QUESTIONS;
+                             !tripReady &&
+                             (context.followUpCount || 0) < MAX_FOLLOW_UP_QUESTIONS;
     
     if (shouldAskQuestion) {
-      const questionsAsked = (context.questionsAsked || 0) + 1;
-      
-      console.log(`Asking follow-up question ${questionsAsked} of ${MAX_QUESTIONS}`);
-      context = await this.stateManager.updateContext(context, {
-        questionsAsked: questionsAsked,
-        lastIntent: intentClassification.intent,
-      });
+      console.log(`Asking follow-up question ${context.followUpCount || 0} of ${MAX_FOLLOW_UP_QUESTIONS}`);
       
       // Compose and return the follow-up question
       const followUpResponse = await this.responseComposer.compose(
@@ -305,26 +419,9 @@ export class Orchestrator {
         stateTransition: undefined,
       };
     }
-    
-    // After 5 questions OR if user confirmed early, automatically generate itinerary
-    const questionsAsked = context.questionsAsked || 0;
-    if (questionsAsked >= MAX_QUESTIONS || context.userConfirmed) {
-      console.log(`Maximum ${MAX_QUESTIONS} questions reached OR user confirmed - auto-generating itinerary`);
-      // Auto-confirm and transition to CONFIRMING
-      context = await this.stateManager.updateContext(context, {
-        userConfirmed: true,
-      });
-      context = await this.stateManager.transitionTo(
-        context,
-        ConversationState.CONFIRMING,
-        questionsAsked >= MAX_QUESTIONS 
-          ? `Maximum ${MAX_QUESTIONS} questions asked - auto-generating`
-          : 'User confirmed early - generating itinerary'
-      );
-    }
 
-    // STEP 4 & 5: Check if READY TO GENERATE (after 5 questions or user confirmed)
-    const readyToGenerate = this.shouldGenerateItinerary(context);
+    // STEP 4 & 5: Check if READY TO GENERATE
+    const readyToGenerate = tripReady && (context.userConfirmed || (context.followUpCount || 0) >= MAX_FOLLOW_UP_QUESTIONS);
     console.log('READY_TO_GENERATE check:', {
       readyToGenerate,
       hasCity: !!context.preferences.city,
@@ -389,13 +486,17 @@ export class Orchestrator {
       nextState: orchestrationResult.nextState,
     });
 
-    // STEP 6: Set hasItinerary flag ONLY after tool success
+    // 5️⃣ Correct hasItinerary Flag Handling
     const itineraryBuilt = orchestrationResult.toolCalls.some(
       (call) => call.toolName === 'itinerary_builder' && call.output.success
     );
     if (itineraryBuilt) {
       console.log('Itinerary built successfully → hasItinerary = true');
+      context = await this.stateManager.updateContext(context, {
+        hasItinerary: true,
+      });
       // State will be updated to PLANNED by determineNextState in ToolOrchestrator
+      context.state = ConversationState.PLANNED;
     }
 
     // Step 6: Run evaluations if itinerary was generated
@@ -457,8 +558,41 @@ export class Orchestrator {
       // The edited itinerary will be returned in toolCalls
     }
     
-    if (intentClassification.intent === UserIntent.SEND_EMAIL) {
+    // 4️⃣ Fix Intent Arbitration: SEND_EMAIL only if itinerary exists
+    if (resolvedIntent === UserIntent.SEND_EMAIL) {
       console.log('SEND_EMAIL intent detected');
+      
+      // CRITICAL: If no itinerary exists, generate it first
+      if (!context.hasItinerary) {
+        console.log('SEND_EMAIL but no itinerary - generating itinerary first');
+        // Force generate itinerary
+        if (isTripReady(context)) {
+          context = await this.stateManager.updateContext(context, {
+            userConfirmed: true,
+          });
+          // This will trigger itinerary generation in the next cycle
+          // For now, return a message asking user to wait
+          return {
+            response: {
+              text: "I'll generate your itinerary first, then send it to your email. Please wait a moment...",
+              state: context.state,
+              metadata: { tripId: context.tripId },
+            },
+            context,
+            toolCalls: [],
+          };
+        } else {
+          return {
+            response: {
+              text: "I need to collect a bit more information before I can generate and send your itinerary. Let me ask you a few quick questions first.",
+              state: context.state,
+              metadata: { tripId: context.tripId },
+            },
+            context,
+            toolCalls: [],
+          };
+        }
+      }
       // Extract email from message or entities
       // Try multiple extraction methods
       const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/i;
@@ -778,11 +912,8 @@ export class Orchestrator {
    * User can confirm early OR after 5 questions (auto-generate)
    */
   private shouldGenerateItinerary(context: ConversationContext): boolean {
-    return Boolean(
-      context.preferences.city &&
-      context.preferences.duration &&
-      context.userConfirmed === true
-    );
+    // Use isTripReady() instead of simple checks
+    return isTripReady(context) && (context.userConfirmed === true || (context.followUpCount || 0) >= MAX_FOLLOW_UP_QUESTIONS);
   }
 
   /**
@@ -825,10 +956,34 @@ export class Orchestrator {
 
     if (entities.interests) {
       context.preferences.interests = entities.interests;
+      if (!context.preferencesProvided) {
+        context.preferencesProvided = true;
+        console.log('Preferences provided detected (interests) - marking preferencesProvided = true');
+      }
     }
 
     if (entities.pace) {
       context.preferences.pace = entities.pace;
+      if (!context.preferencesProvided) {
+        context.preferencesProvided = true;
+        console.log('Preferences provided detected (pace) - marking preferencesProvided = true');
+      }
+    }
+
+    if (entities.budget) {
+      context.preferences.budget = entities.budget;
+      if (!context.preferencesProvided) {
+        context.preferencesProvided = true;
+        console.log('Preferences provided detected (budget) - marking preferencesProvided = true');
+      }
+    }
+
+    if (entities.constraints) {
+      context.preferences.constraints = entities.constraints;
+      if (!context.preferencesProvided) {
+        context.preferencesProvided = true;
+        console.log('Preferences provided detected (constraints) - marking preferencesProvided = true');
+      }
     }
 
     // Update edit target if editing

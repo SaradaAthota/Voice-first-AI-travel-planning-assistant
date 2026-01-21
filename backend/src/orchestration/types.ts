@@ -61,6 +61,10 @@ export interface ConversationContext {
   editTarget?: EditTarget;           // What part of itinerary is being edited
   questionsAsked?: number;           // Number of follow-up questions asked (max 6)
   userConfirmed?: boolean;          // User has explicitly confirmed or auto-confirmed after max questions
+  followUpCount?: number;            // Hard limit counter for follow-up questions (max 6)
+  userSaidNoPreferences?: boolean;   // User said "no preferences", "you decide", etc.
+  preferencesProvided?: boolean;     // User has provided preferences (interests, pace, etc.)
+  hasItinerary?: boolean;            // Itinerary has been successfully generated
 }
 
 /**
