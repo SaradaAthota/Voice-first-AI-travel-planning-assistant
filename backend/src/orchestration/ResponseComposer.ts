@@ -180,6 +180,23 @@ If the user is just greeting you (e.g., "Hi, how are you?"), respond with a frie
         
         // If we've asked 5 questions, the system will auto-generate (handled by Orchestrator)
         // Just ask the question naturally
+        // Check if startDate is missing - prioritize asking for it
+        const needsStartDate = !context.preferences.startDate && 
+                               context.preferences.city && 
+                               context.preferences.duration;
+        
+        if (needsStartDate) {
+          return `${basePrompt}
+You're collecting trip preferences. The user has provided city and duration, but the start date is missing.
+CRITICAL: You MUST ask for the start date now.
+
+Ask: "When would you like to start your trip?" or "What date would you like to begin your ${context.preferences.duration}-day trip to ${context.preferences.city}?"
+
+Be conversational and natural. Accept dates in any format (e.g., "next week", "January 15th", "tomorrow", "2026-02-01").
+
+After getting the start date, you can ask ${questionsRemaining - 1} more questions about interests, pace, or preferences.`;
+        }
+
         return `${basePrompt}
 You're collecting trip preferences. Ask ONE relevant clarifying question naturally.
 CRITICAL RULES:

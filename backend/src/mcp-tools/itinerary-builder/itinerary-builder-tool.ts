@@ -210,8 +210,9 @@ export class ItineraryBuilderTool implements MCPTool {
       throw new Error('Duration must be a positive number');
     }
 
+    // CRITICAL: startDate must be explicitly provided by user - NO FALLBACK
     if (!input.startDate || typeof input.startDate !== 'string') {
-      throw new Error('Start date is required and must be a string (ISO format)');
+      throw new Error('startDate is required and must be explicitly provided by the user. Cannot generate itinerary without a start date.');
     }
 
     if (!input.pace || !['relaxed', 'moderate', 'fast'].includes(input.pace)) {

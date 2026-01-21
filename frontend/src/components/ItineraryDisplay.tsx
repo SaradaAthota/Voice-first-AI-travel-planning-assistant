@@ -88,13 +88,15 @@ export function ItineraryDisplay({ itinerary, tripId, className = '' }: Itinerar
             <p className="text-gray-600 mt-1">
               {itinerary.duration} day{itinerary.duration !== 1 ? 's' : ''} • {itinerary.pace} pace
             </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Starting {new Date(itinerary.startDate).toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </p>
+            {itinerary.startDate && (
+              <p className="text-sm text-gray-500 mt-1">
+                Starting {new Date(itinerary.startDate).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-blue-600">

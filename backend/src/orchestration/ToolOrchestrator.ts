@@ -63,7 +63,7 @@ export class ToolOrchestrator {
       });
       return []; // No tools allowed
     }
-    
+
     const decisions: ToolCallDecision[] = [];
 
     // Decision logic based on state and intent
@@ -75,7 +75,7 @@ export class ToolOrchestrator {
         const hasCityAndDuration = context.preferences.city && context.preferences.duration;
         const isExplicitConfirmation = intent === UserIntent.CONFIRM;
         const isExplicitGenerationRequest = intent === UserIntent.PLAN_TRIP && hasCityAndDuration;
-        
+
         if ((isExplicitConfirmation || isExplicitGenerationRequest) && hasCityAndDuration) {
           // PHASE 4: POI search temporarily disabled
           // User explicitly confirmed or asked to generate - call Itinerary Builder directly (no POI search)
@@ -92,12 +92,11 @@ export class ToolOrchestrator {
               tripId: context.tripId, // Added tripId - required for saving itinerary
               city: context.preferences.city,
               duration: context.preferences.duration,
-              // PHASE 2: Remove duration default - must come from user
-              // PHASE 2: Remove startDate default - must come from user or be explicitly set
-              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+              // CRITICAL: startDate must be explicitly provided by user - NO FALLBACK
+              startDate: context.preferences.startDate, // Will throw if undefined - this is intentional
               pace: context.preferences.pace || 'moderate',
             },
-            reason: isExplicitConfirmation 
+            reason: isExplicitConfirmation
               ? 'User explicitly confirmed, building itinerary'
               : 'User explicitly requested itinerary generation, trip complete - building itinerary',
           });
@@ -257,7 +256,7 @@ export class ToolOrchestrator {
             .order('version', { ascending: false })
             .limit(1)
             .maybeSingle();
-          
+
           if (itineraryData && itineraryData.content) {
             toolInput = {
               ...toolInput,

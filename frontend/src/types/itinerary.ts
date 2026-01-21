@@ -55,7 +55,7 @@ export interface ItineraryDay {
 export interface ItineraryOutput {
   city: string;
   duration: number;
-  startDate: string;
+  startDate: string | null; // Can be null if not provided by user
   pace: 'relaxed' | 'moderate' | 'fast';
   days: ItineraryDay[];
   totalPOIs: number;

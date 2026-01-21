@@ -451,8 +451,24 @@ export class Orchestrator {
     console.log('Deciding tool calls...');
     let toolDecisions: any[];
     
+    // GUARD: Check for startDate before generating itinerary
+    if (readyToGenerate && !context.preferences.startDate) {
+      console.log('Ready to generate but startDate missing - asking for start date');
+      const followUpResponse = await this.responseComposer.composeResponse(
+        context,
+        [],
+        input.message
+      );
+      return {
+        response: followUpResponse,
+        context,
+        toolCalls: [],
+        stateTransition: undefined,
+      };
+    }
+
     // STEP 5: Force tool execution when ready (MUST run before generic heuristics)
-    if (readyToGenerate) {
+    if (readyToGenerate && context.preferences.startDate) {
       console.log('READY_TO_GENERATE = true → Forcing itinerary_builder tool call');
       // PHASE 4: POI search disabled - use empty POIs array (tool will generate basic itinerary)
       // The tool requires POIs, but we'll pass empty array and let it handle gracefully
@@ -463,7 +479,7 @@ export class Orchestrator {
           tripId: context.tripId,
           city: context.preferences.city,
           duration: context.preferences.duration,
-          startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+          startDate: context.preferences.startDate, // NO FALLBACK - must be explicitly provided
           pace: context.preferences.pace || 'moderate',
           pois: [], // PHASE 4: Empty POIs array since POI search is disabled
         },
@@ -521,6 +537,22 @@ export class Orchestrator {
       });
       
       // Force itinerary generation with empty POIs (fallback mode)
+      // Only if startDate is available
+      if (!context.preferences.startDate) {
+        console.log('POI search failed but startDate missing - cannot generate fallback itinerary');
+        // Ask for startDate instead
+        const followUpResponse = await this.responseComposer.composeResponse(
+          context,
+          [],
+          input.message
+        );
+        return {
+          response: followUpResponse,
+          context,
+          toolCalls: orchestrationResult.toolCalls,
+        };
+      }
+
       const fallbackToolDecision = {
         shouldCall: true,
         toolName: 'itinerary_builder',
@@ -528,7 +560,7 @@ export class Orchestrator {
           tripId: context.tripId,
           city: context.preferences.city,
           duration: context.preferences.duration,
-          startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+          startDate: context.preferences.startDate, // NO FALLBACK - must be explicitly provided
           pace: context.preferences.pace || 'moderate',
           pois: [], // Empty POIs - LLM will generate generic itinerary
         },
