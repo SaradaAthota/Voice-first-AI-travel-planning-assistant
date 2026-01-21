@@ -673,13 +673,18 @@ export class Orchestrator {
         break;
 
       case ConversationState.COLLECTING_PREFS:
-        // DO NOT auto-transition to CONFIRMING - wait for user to explicitly confirm
-        // Only transition when intent is CONFIRM (user says "yes", "go ahead", etc.)
-        if (intent === 'CONFIRM' && this.stateManager.canProceedToConfirmation(context)) {
+        // Transition to CONFIRMING when:
+        // 1. User explicitly confirms (CONFIRM intent) OR
+        // 2. User explicitly asks to generate itinerary (PLAN_TRIP with generation keywords) AND trip is complete
+        const tripComplete = this.isTripComplete(context);
+        const isExplicitConfirmation = intent === 'CONFIRM';
+        const isExplicitGenerationRequest = intent === 'PLAN_TRIP' && tripComplete;
+        
+        if ((isExplicitConfirmation || isExplicitGenerationRequest) && this.stateManager.canProceedToConfirmation(context)) {
           return this.stateManager.transitionTo(
             context,
             ConversationState.CONFIRMING,
-            'User explicitly confirmed'
+            isExplicitConfirmation ? 'User explicitly confirmed' : 'User explicitly requested itinerary generation'
           );
         }
         // Stay in COLLECTING_PREFS to ask follow-up questions

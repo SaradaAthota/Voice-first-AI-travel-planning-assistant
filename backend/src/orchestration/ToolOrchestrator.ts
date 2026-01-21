@@ -69,33 +69,43 @@ export class ToolOrchestrator {
     // Decision logic based on state and intent
     switch (context.state) {
       case ConversationState.CONFIRMING:
-        // ONLY generate itinerary if user EXPLICITLY confirms (says "yes", "correct", "go ahead", etc.)
-        // Do NOT generate for PLAN_TRIP intent - wait for explicit confirmation
-        if (intent === UserIntent.CONFIRM) {
-          const hasCityAndDuration = context.preferences.city && context.preferences.duration;
-          if (hasCityAndDuration) {
-            // PHASE 4: POI search temporarily disabled
-            // User explicitly confirmed - call Itinerary Builder directly (no POI search)
-            decisions.push({
-              shouldCall: true,
-              toolName: 'itinerary_builder',
-              toolInput: {
-                tripId: context.tripId, // Added tripId - required for saving itinerary
-                city: context.preferences.city,
-                duration: context.preferences.duration,
-                // PHASE 2: Remove duration default - must come from user
-                // PHASE 2: Remove startDate default - must come from user or be explicitly set
-                startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
-                pace: context.preferences.pace || 'moderate',
-              },
-              reason: 'User explicitly confirmed, building itinerary',
-            });
-          } else {
-            decisions.push({
-              shouldCall: false,
-              reason: 'CONFIRMING state but missing city or duration',
-            });
-          }
+        // Generate itinerary if:
+        // 1. User explicitly confirms (CONFIRM intent) OR
+        // 2. User explicitly asks to generate/get/create itinerary (PLAN_TRIP intent with generation keywords) AND trip is complete
+        const hasCityAndDuration = context.preferences.city && context.preferences.duration;
+        const isExplicitConfirmation = intent === UserIntent.CONFIRM;
+        const isExplicitGenerationRequest = intent === UserIntent.PLAN_TRIP && hasCityAndDuration;
+        
+        if ((isExplicitConfirmation || isExplicitGenerationRequest) && hasCityAndDuration) {
+          // PHASE 4: POI search temporarily disabled
+          // User explicitly confirmed or asked to generate - call Itinerary Builder directly (no POI search)
+          console.log('Generating itinerary in CONFIRMING state:', {
+            intent: intent,
+            isExplicitConfirmation,
+            isExplicitGenerationRequest,
+            hasCityAndDuration,
+          });
+          decisions.push({
+            shouldCall: true,
+            toolName: 'itinerary_builder',
+            toolInput: {
+              tripId: context.tripId, // Added tripId - required for saving itinerary
+              city: context.preferences.city,
+              duration: context.preferences.duration,
+              // PHASE 2: Remove duration default - must come from user
+              // PHASE 2: Remove startDate default - must come from user or be explicitly set
+              startDate: context.preferences.startDate || new Date().toISOString().split('T')[0],
+              pace: context.preferences.pace || 'moderate',
+            },
+            reason: isExplicitConfirmation 
+              ? 'User explicitly confirmed, building itinerary'
+              : 'User explicitly requested itinerary generation, trip complete - building itinerary',
+          });
+        } else if (!hasCityAndDuration) {
+          decisions.push({
+            shouldCall: false,
+            reason: 'CONFIRMING state but missing city or duration',
+          });
         } else {
           // In CONFIRMING state but user hasn't confirmed yet - don't generate itinerary
           decisions.push({

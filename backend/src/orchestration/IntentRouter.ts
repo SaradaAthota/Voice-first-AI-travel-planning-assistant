@@ -224,6 +224,7 @@ Classify the intent and extract entities.`;
       };
     }
 
+    // Check for CONFIRM intent - includes explicit itinerary generation requests
     if (
       lowerMessage.includes('yes') ||
       lowerMessage.includes('correct') ||
@@ -235,11 +236,20 @@ Classify the intent and extract entities.`;
       lowerMessage.includes('sounds good') ||
       lowerMessage.includes('proceed') ||
       lowerMessage.includes('okay') ||
-      lowerMessage.includes('ok')
+      lowerMessage.includes('ok') ||
+      // Explicit itinerary generation requests (when trip is complete)
+      (lowerMessage.includes('generate') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
+      (lowerMessage.includes('get') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
+      (lowerMessage.includes('create') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
+      (lowerMessage.includes('build') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
+      (lowerMessage.includes('show') && (lowerMessage.includes('itinerary') || lowerMessage.includes('plan'))) ||
+      lowerMessage.includes('get me the itinerary') ||
+      lowerMessage.includes('generate the itinerary') ||
+      lowerMessage.includes('create the itinerary')
     ) {
       return {
         intent: UserIntent.CONFIRM,
-        confidence: 0.8,
+        confidence: 0.9,
         entities: {},
         requiresClarification: false,
       };
