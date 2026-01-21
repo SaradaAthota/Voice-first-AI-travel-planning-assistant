@@ -581,11 +581,20 @@ export class Orchestrator {
         (call) => call.toolName === 'itinerary_builder' && call.output.success
       );
       if (fallbackItineraryBuilt) {
-        console.log('FIX #2: Fallback itinerary built successfully → hasItinerary = true');
-        context = await this.stateManager.updateContext(context, {
-          hasItinerary: true,
-        });
-        context.state = ConversationState.PLANNED;
+        // Validate itinerary structure before setting hasItinerary
+        const fallbackItinerary = fallbackResult.toolCalls.find(
+          (call) => call.toolName === 'itinerary_builder' && call.output.success
+        )?.output.data as ItineraryOutput | undefined;
+        
+        if (fallbackItinerary && this.isValidItineraryStructure(fallbackItinerary)) {
+          console.log('FIX #2: Fallback itinerary built successfully → hasItinerary = true');
+          context = await this.stateManager.updateContext(context, {
+            hasItinerary: true,
+          });
+          context.state = ConversationState.PLANNED;
+        } else {
+          console.error('FIX #2: Fallback itinerary structure invalid - NOT setting hasItinerary');
+        }
       }
     }
 
@@ -594,12 +603,26 @@ export class Orchestrator {
       (call) => call.toolName === 'itinerary_builder' && call.output.success
     );
     if (itineraryBuilt) {
-      console.log('Itinerary built successfully → hasItinerary = true');
-      context = await this.stateManager.updateContext(context, {
-        hasItinerary: true,
-      });
-      // State will be updated to PLANNED by determineNextState in ToolOrchestrator
-      context.state = ConversationState.PLANNED;
+      // Validate itinerary structure before setting hasItinerary
+      const builtItinerary = orchestrationResult.toolCalls.find(
+        (call) => call.toolName === 'itinerary_builder' && call.output.success
+      )?.output.data as ItineraryOutput | undefined;
+      
+      if (builtItinerary && this.isValidItineraryStructure(builtItinerary)) {
+        console.log('Itinerary built successfully → hasItinerary = true');
+        context = await this.stateManager.updateContext(context, {
+          hasItinerary: true,
+        });
+        // State will be updated to PLANNED by determineNextState in ToolOrchestrator
+        context.state = ConversationState.PLANNED;
+      } else {
+        const builtItineraryAny = builtItinerary as any;
+        console.error('Itinerary structure invalid - NOT setting hasItinerary:', {
+          hasItinerary: !!builtItinerary,
+          hasDays: !!builtItineraryAny?.days,
+          daysIsArray: Array.isArray(builtItineraryAny?.days),
+        });
+      }
     }
 
     // Step 6: Run evaluations if itinerary was generated
@@ -1062,6 +1085,52 @@ export class Orchestrator {
   }
 
   // Removed unused shouldGenerateItinerary method - logic is handled inline using isTripReady()
+
+  /**
+   * Validate itinerary structure - ensures strict contract
+   * Backend must NEVER set hasItinerary=true unless this passes
+   */
+  private isValidItineraryStructure(itinerary: any): itinerary is ItineraryOutput {
+    if (!itinerary || typeof itinerary !== 'object') {
+      return false;
+    }
+    
+    // Required fields
+    if (!itinerary.city || typeof itinerary.city !== 'string') {
+      return false;
+    }
+    
+    if (typeof itinerary.duration !== 'number' || itinerary.duration < 1) {
+      return false;
+    }
+    
+    if (!itinerary.startDate || typeof itinerary.startDate !== 'string') {
+      return false;
+    }
+    
+    // CRITICAL: days must exist and be a non-empty array
+    if (!itinerary.days || !Array.isArray(itinerary.days) || itinerary.days.length === 0) {
+      return false;
+    }
+    
+    // Validate each day has required structure
+    for (const day of itinerary.days) {
+      if (!day || typeof day !== 'object') {
+        return false;
+      }
+      if (typeof day.day !== 'number' || day.day < 1) {
+        return false;
+      }
+      if (!day.date || typeof day.date !== 'string') {
+        return false;
+      }
+      if (!day.blocks || typeof day.blocks !== 'object') {
+        return false;
+      }
+    }
+    
+    return true;
+  }
 
   /**
    * Update context with entities extracted from intent classification

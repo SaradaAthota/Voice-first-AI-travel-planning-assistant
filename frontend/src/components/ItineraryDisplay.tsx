@@ -14,7 +14,30 @@ interface ItineraryDisplayProps {
   className?: string;
 }
 
+/**
+ * Validate itinerary structure - defensive check
+ */
+function isValidItinerary(itinerary: ItineraryOutput | null): itinerary is ItineraryOutput {
+  if (!itinerary) return false;
+  if (!itinerary.city || typeof itinerary.city !== 'string') return false;
+  if (typeof itinerary.duration !== 'number' || itinerary.duration < 1) return false;
+  if (!itinerary.days || !Array.isArray(itinerary.days) || itinerary.days.length === 0) return false;
+  return true;
+}
+
 export function ItineraryDisplay({ itinerary, tripId, className = '' }: ItineraryDisplayProps) {
+  // STRICT CONTRACT: Only render if itinerary structure is valid
+  if (!isValidItinerary(itinerary)) {
+    return (
+      <div className={`p-6 bg-white rounded-lg shadow-md ${className}`}>
+        <div className="text-center text-gray-500">
+          <p className="text-lg font-semibold">Itinerary not available</p>
+          <p className="text-sm mt-2">The itinerary structure is invalid or incomplete.</p>
+          <p className="text-sm mt-1">Please try generating the itinerary again.</p>
+        </div>
+      </div>
+    );
+  }
   const [email, setEmail] = useState('');
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [sending, setSending] = useState(false);

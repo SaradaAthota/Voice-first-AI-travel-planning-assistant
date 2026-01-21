@@ -173,14 +173,28 @@ function App() {
             });
             
             if (data.itinerary) {
-              // Validate itinerary structure before setting state
-              if (!data.itinerary.days || !Array.isArray(data.itinerary.days)) {
-                console.error('Invalid itinerary structure - days missing or not an array:', data.itinerary);
-                setAssistantResponse('I encountered an error processing the itinerary. Please try again.');
+              // STRICT CONTRACT: Validate complete itinerary structure before setting state
+              const isValid = data.itinerary.city && 
+                             typeof data.itinerary.duration === 'number' && 
+                             data.itinerary.startDate &&
+                             Array.isArray(data.itinerary.days) && 
+                             data.itinerary.days.length > 0;
+              
+              if (!isValid) {
+                console.error('Invalid itinerary structure - rejecting:', {
+                  hasCity: !!data.itinerary.city,
+                  hasDuration: typeof data.itinerary.duration === 'number',
+                  hasStartDate: !!data.itinerary.startDate,
+                  hasDays: !!data.itinerary.days,
+                  daysIsArray: Array.isArray(data.itinerary.days),
+                  daysLength: data.itinerary.days?.length,
+                });
+                setAssistantResponse('I encountered an error processing the itinerary. The structure is invalid. Please try generating it again.');
+                setItineraryFromResponse(null); // Clear any invalid itinerary
                 return;
               }
               
-              console.log('Itinerary received in response, setting directly');
+              console.log('Valid itinerary received in response, setting directly');
               setItineraryFromResponse(data.itinerary);
               // Clear assistant response when itinerary is available
               setAssistantResponse(null);

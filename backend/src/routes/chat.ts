@@ -13,6 +13,52 @@ import { itineraryEditorTool } from '../mcp-tools/itinerary-editor';
 import { getSupabaseClient } from '../db/supabase';
 import { ItineraryOutput } from '../mcp-tools/itinerary-builder/types';
 
+/**
+ * Validate itinerary structure - ensures strict contract
+ * Backend must NEVER return hasItinerary=true unless this passes
+ */
+function isValidItineraryStructure(itinerary: any): itinerary is ItineraryOutput {
+  if (!itinerary || typeof itinerary !== 'object') {
+    return false;
+  }
+  
+  // Required fields
+  if (!itinerary.city || typeof itinerary.city !== 'string') {
+    return false;
+  }
+  
+  if (typeof itinerary.duration !== 'number' || itinerary.duration < 1) {
+    return false;
+  }
+  
+  if (!itinerary.startDate || typeof itinerary.startDate !== 'string') {
+    return false;
+  }
+  
+  // CRITICAL: days must exist and be a non-empty array
+  if (!itinerary.days || !Array.isArray(itinerary.days) || itinerary.days.length === 0) {
+    return false;
+  }
+  
+  // Validate each day has required structure
+  for (const day of itinerary.days) {
+    if (!day || typeof day !== 'object') {
+      return false;
+    }
+    if (typeof day.day !== 'number' || day.day < 1) {
+      return false;
+    }
+    if (!day.date || typeof day.date !== 'string') {
+      return false;
+    }
+    if (!day.blocks || typeof day.blocks !== 'object') {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 const router = Router();
 
 // Create orchestrator instance (singleton pattern)
@@ -148,8 +194,24 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
     
+    // Validate itinerary structure if it exists
+    if (itinerary) {
+      const itineraryAny = itinerary as any; // Type assertion for logging
+      if (!isValidItineraryStructure(itinerary)) {
+        console.error('Invalid itinerary structure - rejecting itinerary:', {
+          hasCity: !!itineraryAny.city,
+          hasDuration: typeof itineraryAny.duration === 'number',
+          hasStartDate: !!itineraryAny.startDate,
+          hasDays: !!itineraryAny.days,
+          daysIsArray: Array.isArray(itineraryAny.days),
+          daysLength: itineraryAny.days?.length,
+        });
+        itinerary = null; // Reject invalid itinerary
+      }
+    }
+
     // If no itinerary from tool calls, check database
-    let hasItinerary = !!itinerary;
+    let hasItinerary = false;
     if (!itinerary && outputTripId) {
       try {
         const supabase = getSupabaseClient();
@@ -163,13 +225,27 @@ router.post('/', async (req: Request, res: Response) => {
           .maybeSingle();
         
         if (itineraryData && itineraryData.content) {
-          itinerary = itineraryData.content as ItineraryOutput;
-          hasItinerary = true;
-          console.log('Found existing itinerary in database for tripId:', outputTripId);
+          const dbItinerary = itineraryData.content as ItineraryOutput;
+          // Validate before using
+          if (isValidItineraryStructure(dbItinerary)) {
+            itinerary = dbItinerary;
+            hasItinerary = true;
+            console.log('Found existing itinerary in database for tripId:', outputTripId);
+          } else {
+            const dbItineraryAny = dbItinerary as any;
+            console.error('Invalid itinerary structure in database - rejecting:', {
+              hasCity: !!dbItineraryAny.city,
+              hasDays: !!dbItineraryAny.days,
+              daysIsArray: Array.isArray(dbItineraryAny.days),
+            });
+          }
         }
       } catch (error) {
         console.error('Error checking for existing itinerary:', error);
       }
+    } else if (itinerary) {
+      // Itinerary from tool calls - validate it's complete
+      hasItinerary = isValidItineraryStructure(itinerary);
     }
     
     // Extract citations from response (merge with tool citations)
