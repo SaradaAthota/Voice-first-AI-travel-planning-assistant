@@ -198,8 +198,18 @@ export class Orchestrator {
         questionsAsked: questionsAsked,
       });
 
-      // If we've reached max questions, transition to CONFIRMING
-      if (questionsAsked >= maxQuestions) {
+      // Rule B: Auto-proceed after max questions if city and duration are available
+      if (questionsAsked >= maxQuestions && isTripComplete) {
+        console.log('Auto-confirming after max questions (Rule B)');
+        context = await this.stateManager.updateContext(context, {
+          userConfirmed: true,
+        });
+        context = await this.stateManager.transitionTo(
+          context,
+          ConversationState.CONFIRMING,
+          `Maximum ${maxQuestions} questions asked - auto-confirmed`
+        );
+      } else if (questionsAsked >= maxQuestions) {
         console.log(`Maximum ${maxQuestions} questions reached - transitioning to CONFIRMING state`);
         context = await this.stateManager.transitionTo(
           context,
