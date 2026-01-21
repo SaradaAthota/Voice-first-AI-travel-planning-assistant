@@ -18,7 +18,7 @@ const router = Router();
 router.post('/send-pdf', async (req: Request, res: Response) => {
   console.log('=== PDF EMAIL REQUEST ===');
   console.log('Request body:', { tripId: req.body.tripId, email: req.body.email });
-  
+
   try {
     const { tripId, email } = req.body;
 
@@ -54,12 +54,12 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
 
     if (itineraryError) {
       console.error('Error fetching itinerary:', itineraryError);
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'Itinerary not found',
-        details: itineraryError.message 
+        details: itineraryError.message
       });
     }
-    
+
     if (!itineraryData || !itineraryData.content) {
       console.error('Itinerary data is empty');
       return res.status(404).json({ error: 'Itinerary not found' });
@@ -76,17 +76,17 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
         error: 'N8N webhook URL not configured',
       });
     }
-    
+
     console.log('Generating PDF for itinerary...');
-    
+
     // Step 1: Generate HTML for itinerary
     const html = generateItineraryHTML(itinerary);
-    
+
     // Step 2: Generate PDF using Puppeteer
     let pdfBuffer: Buffer;
     try {
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-      
+
       const browser = await puppeteer.launch({
         headless: true,
         executablePath: executablePath,
@@ -102,14 +102,14 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
           '--disable-extensions',
         ],
       });
-      
+
       try {
         const page = await browser.newPage();
-        await page.setContent(html, { 
+        await page.setContent(html, {
           waitUntil: 'networkidle0',
           timeout: 30000,
         });
-        
+
         const pdfUint8Array = await page.pdf({
           format: 'A4',
           margin: {
@@ -121,10 +121,10 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
           printBackground: true,
           preferCSSPageSize: false,
         });
-        
+
         // Convert Uint8Array to Buffer for FormData
         pdfBuffer = Buffer.from(pdfUint8Array);
-        
+
         console.log('PDF generated successfully, size:', pdfBuffer.length, 'bytes');
       } finally {
         await browser.close();
@@ -136,14 +136,14 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
         details: pdfError instanceof Error ? pdfError.message : 'Unknown error',
       });
     }
-    
+
     // Step 3: Send PDF to n8n as multipart/form-data
     console.log('Sending PDF to n8n webhook as multipart/form-data:', n8nWebhookUrl);
-    
+
     try {
       // Create FormData
       const formData = new FormData();
-      
+
       // Append PDF buffer with EXACT field name "itinerary.pdf"
       formData.append(
         'itinerary.pdf',
@@ -153,7 +153,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
           contentType: 'application/pdf',
         }
       );
-      
+
       // Append JSON fields separately
       formData.append('email', email);
       formData.append('city', itinerary.city);
@@ -161,7 +161,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
       if (itinerary.startDate) {
         formData.append('startDate', itinerary.startDate);
       }
-      
+
       // Call n8n webhook with FormData
       const webhookResponse = await fetch(n8nWebhookUrl, {
         method: 'POST',
@@ -190,7 +190,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
       let webhookData;
       const contentType = webhookResponse.headers.get('content-type');
       const responseText = await webhookResponse.text();
-      
+
       if (!responseText || responseText.trim() === '') {
         // Empty response - n8n workflow succeeded but returned no body
         console.log('N8N webhook returned empty response (this is OK - workflow executed successfully)');
@@ -222,7 +222,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
       return;
     } catch (webhookError) {
       console.error('Error calling n8n webhook:', webhookError);
-      
+
       // Handle timeout errors
       if (webhookError instanceof Error && webhookError.name === 'AbortError') {
         return res.status(504).json({
@@ -230,7 +230,7 @@ router.post('/send-pdf', async (req: Request, res: Response) => {
           details: 'The n8n workflow took too long to respond. Please check the workflow execution logs.',
         });
       }
-      
+
       return res.status(500).json({
         error: 'Failed to trigger PDF generation',
         details: webhookError instanceof Error ? webhookError.message : 'Unknown error',
@@ -280,7 +280,7 @@ function generateItineraryHTML(itinerary: any): string {
     month: 'long',
     day: 'numeric',
   }) : 'TBD';
-  
+
   let daysHTML = '';
   if (itinerary.days && Array.isArray(itinerary.days)) {
     daysHTML = itinerary.days.map((day: any) => {
@@ -289,7 +289,7 @@ function generateItineraryHTML(itinerary: any): string {
         month: 'long',
         day: 'numeric',
       }) : `Day ${day.day}`;
-      
+
       let blocksHTML = '';
       if (day.blocks) {
         const blocks = ['morning', 'afternoon', 'evening'];
@@ -298,7 +298,7 @@ function generateItineraryHTML(itinerary: any): string {
           if (!block || !block.activities || block.activities.length === 0) {
             return '';
           }
-          
+
           const activitiesHTML = block.activities.map((activity: any) => {
             const poi = activity.poi || {};
             const time = activity.startTime || '';
@@ -316,7 +316,7 @@ function generateItineraryHTML(itinerary: any): string {
               </div>
             `;
           }).join('');
-          
+
           return `
             <div style="margin-bottom: 20px;">
               <h3 style="color: #2196F3; margin-bottom: 10px; text-transform: capitalize;">${blockType}</h3>
@@ -325,7 +325,7 @@ function generateItineraryHTML(itinerary: any): string {
           `;
         }).join('');
       }
-      
+
       return `
         <div style="page-break-inside: avoid; margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
           <h2 style="color: #1976D2; margin-bottom: 15px;">Day ${day.day}: ${dayDate}</h2>
@@ -335,7 +335,7 @@ function generateItineraryHTML(itinerary: any): string {
       `;
     }).join('');
   }
-  
+
   return `
     <!DOCTYPE html>
     <html>

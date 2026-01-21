@@ -569,15 +569,22 @@ Requirements:
 
           for (const activity of Array.isArray(activities) ? activities : []) {
             // Create synthetic POI from LLM activity
+            // Use approximate city center coordinates (spread slightly to enable distance calculation)
+            // This ensures travel time can be calculated between activities
+            const baseLat = 10.0; // Approximate city center (will be spread)
+            const baseLon = 76.0; // Approximate city center
+            const spread = 0.1; // ~11km spread to enable distance calculation
+            const latOffset = (dayPOIs.length % 3) * spread - spread; // Spread activities
+            const lonOffset = Math.floor(dayPOIs.length / 3) * spread - spread;
+            
             const syntheticPOI: POI = {
               osmId: 1000000 + dayNum * 100 + dayPOIs.length, // Synthetic ID
               osmType: 'node',
               name: activity.title || 'Activity',
               category: activity.category || 'tourism',
               coordinates: {
-                // Use city center coordinates (approximate - would be better with geocoding)
-                lat: 0, // Will be set to city center if available
-                lon: 0,
+                lat: baseLat + latOffset, // Spread coordinates to enable distance calculation
+                lon: baseLon + lonOffset,
               },
               tags: {
                 name: activity.title,
@@ -585,6 +592,7 @@ Requirements:
                 category: activity.category || 'tourism',
                 timeBlock: activity.timeBlock || 'afternoon',
                 duration: String(activity.duration || 60),
+                city: city, // Add city to tags for location object
               },
               description: activity.description,
             };
@@ -626,16 +634,27 @@ Requirements:
       const dayPOIs: POI[] = [];
       for (let i = 0; i < Math.min(3, defaultActivities.length); i++) {
         const activity = defaultActivities[i];
+        // Use approximate city center coordinates with spread to enable distance calculation
+        const baseLat = 10.0;
+        const baseLon = 76.0;
+        const spread = 0.1;
+        const latOffset = (i % 3) * spread - spread;
+        const lonOffset = Math.floor(i / 3) * spread - spread;
+        
         dayPOIs.push({
           osmId: 2000000 + dayNum * 100 + i,
           osmType: 'node',
           name: `${activity.name} - ${city}`,
           category: activity.category,
-          coordinates: { lat: 0, lon: 0 },
+          coordinates: {
+            lat: baseLat + latOffset, // Spread coordinates
+            lon: baseLon + lonOffset,
+          },
           tags: {
             name: activity.name,
             category: activity.category,
             timeBlock: activity.timeBlock,
+            city: city, // Add city to tags
           },
           description: `Explore ${city}`,
         });

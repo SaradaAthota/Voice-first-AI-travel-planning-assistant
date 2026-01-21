@@ -136,27 +136,56 @@ export function clusterPOIsByProximity(
  * - Walking: ~5 km/h
  * - City travel: ~30 km/h average (accounting for traffic, stops)
  * 
- * @returns Travel time in minutes
+ * If coordinates are missing or invalid, uses default heuristic:
+ * - Same city OR missing coords → 15 minutes default
+ * 
+ * @returns Travel time in minutes (always > 0 if both POIs exist)
  */
 export function estimateTravelTime(
   from: POI,
   to: POI,
   mode: 'walking' | 'driving' = 'driving'
 ): number {
-  const distance = calculateDistance(
-    from.coordinates.lat,
-    from.coordinates.lon,
-    to.coordinates.lat,
-    to.coordinates.lon
-  );
+  // Validate coordinates
+  const fromLat = from.coordinates?.lat;
+  const fromLon = from.coordinates?.lon;
+  const toLat = to.coordinates?.lat;
+  const toLon = to.coordinates?.lon;
+  
+  // Check if coordinates are valid (not 0,0 and within valid range)
+  const fromValid = fromLat != null && fromLon != null && 
+                    (fromLat !== 0 || fromLon !== 0) &&
+                    fromLat >= -90 && fromLat <= 90 &&
+                    fromLon >= -180 && fromLon <= 180;
+  const toValid = toLat != null && toLon != null &&
+                  (toLat !== 0 || toLon !== 0) &&
+                  toLat >= -90 && toLat <= 90 &&
+                  toLon >= -180 && toLon <= 180;
+  
+  // If coordinates are invalid or missing, use default heuristic
+  if (!fromValid || !toValid) {
+    // Same city OR missing coords → 15 minutes default
+    // Default: 15 minutes between activities in same city
+    return 15;
+  }
+  
+  // Calculate distance using Haversine
+  const distance = calculateDistance(fromLat, fromLon, toLat, toLon);
+  
+  // If distance is 0 or very small (< 0.1 km), use minimum travel time
+  if (distance < 0.1) {
+    return 5; // Minimum 5 minutes for very close activities
+  }
 
   if (mode === 'walking') {
     // Walking speed: ~5 km/h = 0.083 km/min
-    return Math.ceil(distance / 0.083);
+    const walkingTime = Math.ceil(distance / 0.083);
+    return Math.max(5, walkingTime); // Minimum 5 minutes
   } else {
     // City driving: ~30 km/h average (accounting for traffic, stops, lights)
     // This is conservative - actual may vary
-    return Math.ceil((distance / 30) * 60);
+    const drivingTime = Math.ceil((distance / 30) * 60);
+    return Math.max(10, drivingTime); // Minimum 10 minutes for driving
   }
 }
 

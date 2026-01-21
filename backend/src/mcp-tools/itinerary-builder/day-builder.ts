@@ -209,10 +209,34 @@ export function buildDay(
     ...(eveningBlock?.activities || []),
   ];
 
-  const totalTravelTime = allActivities.reduce(
+  // Calculate travel time WITHIN blocks (from activities)
+  let totalTravelTime = allActivities.reduce(
     (sum, act) => sum + (act.travelTimeFromPrevious || 0),
     0
   );
+
+  // Calculate travel time BETWEEN blocks (morning → afternoon → evening)
+  // This is critical - we need to account for travel between blocks
+  if (morningBlock && morningBlock.activities.length > 0 && afternoonBlock && afternoonBlock.activities.length > 0) {
+    const lastMorningActivity = morningBlock.activities[morningBlock.activities.length - 1];
+    const firstAfternoonActivity = afternoonBlock.activities[0];
+    const blockTravelTime = estimateTravelTime(lastMorningActivity.poi, firstAfternoonActivity.poi);
+    totalTravelTime += blockTravelTime;
+  }
+  
+  if (afternoonBlock && afternoonBlock.activities.length > 0 && eveningBlock && eveningBlock.activities.length > 0) {
+    const lastAfternoonActivity = afternoonBlock.activities[afternoonBlock.activities.length - 1];
+    const firstEveningActivity = eveningBlock.activities[0];
+    const blockTravelTime = estimateTravelTime(lastAfternoonActivity.poi, firstEveningActivity.poi);
+    totalTravelTime += blockTravelTime;
+  }
+
+  // Ensure travel time is never 0 if there are 2+ activities
+  if (allActivities.length >= 2 && totalTravelTime === 0) {
+    // Fallback: use default 15 minutes per transition
+    const transitions = allActivities.length - 1;
+    totalTravelTime = transitions * 15;
+  }
 
   const totalDuration = allActivities.reduce((sum, act) => sum + act.duration, 0);
 

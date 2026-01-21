@@ -304,10 +304,37 @@ export class ItineraryEditorTool implements MCPTool {
     ];
 
     day.totalActivities = allActivities.length;
-    day.totalTravelTime = allActivities.reduce(
+    
+    // Calculate travel time WITHIN blocks
+    let totalTravelTime = allActivities.reduce(
       (sum, act) => sum + (act.travelTimeFromPrevious || 0),
       0
     );
+    
+    // Calculate travel time BETWEEN blocks
+    const { estimateTravelTime } = require('../itinerary-builder/clustering');
+    
+    if (day.blocks.morning && day.blocks.morning.activities.length > 0 && 
+        day.blocks.afternoon && day.blocks.afternoon.activities.length > 0) {
+      const lastMorning = day.blocks.morning.activities[day.blocks.morning.activities.length - 1];
+      const firstAfternoon = day.blocks.afternoon.activities[0];
+      totalTravelTime += estimateTravelTime(lastMorning.poi, firstAfternoon.poi);
+    }
+    
+    if (day.blocks.afternoon && day.blocks.afternoon.activities.length > 0 && 
+        day.blocks.evening && day.blocks.evening.activities.length > 0) {
+      const lastAfternoon = day.blocks.afternoon.activities[day.blocks.afternoon.activities.length - 1];
+      const firstEvening = day.blocks.evening.activities[0];
+      totalTravelTime += estimateTravelTime(lastAfternoon.poi, firstEvening.poi);
+    }
+    
+    // Ensure travel time is never 0 if there are 2+ activities
+    if (allActivities.length >= 2 && totalTravelTime === 0) {
+      const transitions = allActivities.length - 1;
+      totalTravelTime = transitions * 15; // Default 15 minutes per transition
+    }
+    
+    day.totalTravelTime = totalTravelTime;
     day.totalDuration = allActivities.reduce((sum, act) => sum + act.duration, 0);
   }
 
