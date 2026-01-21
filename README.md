@@ -37,15 +37,73 @@ An intelligent travel planning assistant that uses voice input to create persona
 - **n8n**: Workflow automation for PDF and email
 - **Docker Compose**: Local development environment
 
+## 🏗️ Architecture
+
+### System Overview
+
+```
+┌─────────────────┐
+│   Frontend      │  React + Vite + TypeScript
+│   (Vercel)      │  Voice Recording → SSE → Backend
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   Backend       │  Express.js + TypeScript
+│   (Railway)     │  Orchestration → MCP Tools → LLM
+└────────┬────────┘
+         │
+    ┌────┴────┬──────────┬──────────┐
+    ▼         ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│Supabase│ │ChromaDB│ │OpenAI  │ │  n8n   │
+│  (DB)  │ │ (RAG)  │ │ (LLM)  │ │(Email) │
+└────────┘ └────────┘ └────────┘ └────────┘
+```
+
+### Request Flow
+
+1. **Voice Input**: User records audio → Frontend uploads chunks → Backend transcribes via Whisper
+2. **Orchestration**: Backend processes transcript → Intent classification → State management
+3. **Tool Execution**: MCP tools called based on intent (POI search, itinerary builder, editor)
+4. **RAG Retrieval**: ChromaDB queried for city guidance and explanations
+5. **Response Generation**: LLM composes response with citations → SSE streams to frontend
+6. **PDF/Email**: User requests PDF → Backend generates → n8n sends email
+
+### Key Components
+
+- **Orchestrator**: Manages conversation state, intent routing, tool decisions
+- **MCP Tools**: Deterministic functions for POI search, itinerary building, editing
+- **RAG System**: Vector search for grounded, cited responses
+- **Evaluation System**: Automatic validation of feasibility, grounding, edit correctness
+
 ## 🏗️ Project Structure
 
 ```
 .
-├── frontend/          # React frontend application
-├── backend/           # Express.js backend API
-├── n8n/              # n8n workflow definitions
-├── docker-compose.yml # Local development setup
-└── README.md         # This file
+├── frontend/                    # React frontend application
+│   ├── src/
+│   │   ├── components/         # UI components
+│   │   ├── hooks/              # React hooks (voice, SSE, itinerary)
+│   │   └── services/           # API services
+│   └── package.json
+├── backend/                    # Express.js backend API
+│   ├── src/
+│   │   ├── orchestration/      # Orchestrator, IntentRouter, ResponseComposer
+│   │   ├── mcp-tools/          # MCP tool implementations
+│   │   │   ├── poi-search/     # POI search tool
+│   │   │   ├── itinerary-builder/  # Itinerary generation tool
+│   │   │   └── itinerary-editor/   # Itinerary editing tool
+│   │   ├── rag/                # RAG retrieval and ingestion
+│   │   ├── evaluations/        # Evaluation system
+│   │   ├── voice/              # Voice transcription (Whisper)
+│   │   └── routes/             # API routes
+│   └── package.json
+├── n8n/                        # n8n workflow definitions
+│   └── workflow-itinerary-pdf-email-simplified.json
+├── supabase/                   # Database migrations
+│   └── schema.sql
+└── README.md                   # This file
 ```
 
 ## 🛠️ Setup
@@ -1100,6 +1158,397 @@ MIT License
 - **PDF Generation**: Puppeteer-based HTML to PDF conversion
 - **Email Delivery**: n8n workflow for automated email sending
 - **Voice Commands**: "Share it to me" or "Send via email" triggers PDF generation
+
+## 🔧 MCP Tools
+
+This project uses **Model Context Protocol (MCP) Tools** for deterministic, traceable operations. All tool calls are logged to the database for audit and evaluation.
+
+### 1. POI Search Tool (`poi_search`)
+
+**Status**: Currently disabled (can be re-enabled)
+
+**Purpose**: Searches for Points of Interest using OpenStreetMap Overpass API
+
+**Location**: `backend/src/mcp-tools/poi-search/`
+
+**Input**:
+```typescript
+{
+  city: string;              // Required: City name
+  interests?: string[];      // Optional: e.g., ['food', 'culture', 'history']
+  constraints?: string[];    // Optional: Special requirements
+  pace?: 'relaxed' | 'moderate' | 'fast';
+  limit?: number;            // Optional: Max POIs (default: 50, max: 100)
+}
+```
+
+**Output**:
+```typescript
+{
+  success: boolean;
+  data?: {
+    pois: POI[];             // Array of POI objects with OSM IDs
+    city: string;
+    totalFound: number;
+    categories: string[];
+  };
+  citations?: Citation[];    // OSM citations
+}
+```
+
+**Features**:
+- Maps user interests to OSM tags deterministically
+- Returns structured JSON with OSM IDs, coordinates, tags
+- Ensures all POIs map to OSM records (required by policy)
+
+### 2. Itinerary Builder Tool (`itinerary_builder`)
+
+**Purpose**: Generates day-by-day travel itineraries from POIs and preferences
+
+**Location**: `backend/src/mcp-tools/itinerary-builder/`
+
+**Input**:
+```typescript
+{
+  tripId?: string;           // Optional: For editing existing itinerary
+  city: string;              // Required
+  duration: number;          // Required: Number of days
+  startDate: string | null;  // Required: ISO date (YYYY-MM-DD) or null
+  pace: 'relaxed' | 'moderate' | 'fast';
+  pois: POI[];               // Array of POIs (can be empty for LLM fallback)
+  preferences?: TripPreferences;
+}
+```
+
+**Output**:
+```typescript
+{
+  success: boolean;
+  data?: ItineraryOutput;     // Complete itinerary with days, activities, travel times
+  citations?: Citation[];     // OSM and RAG citations
+}
+```
+
+**Features**:
+- Distributes POIs across days based on pace and proximity
+- Generates morning/afternoon/evening blocks
+- Calculates travel times between activities
+- LLM fallback when POIs are empty
+- Validates feasibility (travel time, duration)
+
+### 3. Itinerary Editor Tool (`itinerary_editor`)
+
+**Purpose**: Edits existing itineraries deterministically (no LLM usage)
+
+**Location**: `backend/src/mcp-tools/itinerary-editor/`
+
+**Input**:
+```typescript
+{
+  tripId: string;            // Required
+  itinerary: ItineraryOutput; // Existing itinerary
+  editType: 'relax' | 'swap' | 'add' | 'remove' | 'reduce_travel';
+  targetDay: number;          // Day to edit (1-indexed)
+  targetBlock?: 'morning' | 'afternoon' | 'evening';
+  editParams?: {
+    targetTravelTime?: number;  // For reduce_travel
+    poiName?: string;           // For remove/add
+    swapDay?: number;           // For swap
+  };
+}
+```
+
+**Output**:
+```typescript
+{
+  success: boolean;
+  data?: {
+    editedItinerary: ItineraryOutput;
+    changes: {
+      type: string;
+      day?: number;
+      block?: string;
+    };
+  };
+}
+```
+
+**Features**:
+- Modifies ONLY targeted sections (preserves other days)
+- Increments itinerary version
+- Triggers feasibility evaluation automatically
+- Verifies changes using diff checking
+
+### Tool Registration
+
+All tools are registered in `backend/src/routes/chat.ts`:
+
+```typescript
+orchestratorInstance.registerTool(itineraryBuilderTool);
+orchestratorInstance.registerTool(itineraryEditorTool);
+// poiSearchTool is currently disabled
+```
+
+### Tool Call Logging
+
+All tool calls are automatically logged to the `mcp_logs` table in Supabase with:
+- Tool name
+- Input parameters
+- Output (success/failure)
+- Execution time
+- Timestamp
+
+## 📚 Datasets Referenced
+
+### 1. OpenStreetMap (OSM)
+
+**Purpose**: POI discovery and geographic data
+
+**Usage**:
+- POI search via Overpass API
+- City bounding box lookup via Nominatim
+- POI metadata (name, category, coordinates, tags)
+
+**Citation Format**: `https://www.openstreetmap.org/node/{osmId}`
+
+**Data Structure**:
+- OSM nodes, ways, relations
+- Tags: `tourism`, `historic`, `amenity`, `shop`, etc.
+- Coordinates: lat/lon
+
+### 2. Wikivoyage
+
+**Purpose**: Travel guide information for RAG
+
+**URL Format**: `https://en.wikivoyage.org/wiki/{city}`
+
+**Sections Extracted**:
+- Safety: Safety information and warnings
+- Eat: Food and dining recommendations
+- Get Around: Transportation information
+- Weather: Weather and climate information
+- See/Do: Attractions and activities
+
+**Ingestion**: Fetched via Wikipedia API (`api.php?action=parse`)
+
+**Citation Format**: `https://en.wikivoyage.org/wiki/{city}#{section}`
+
+### 3. Wikipedia
+
+**Purpose**: Additional travel information for RAG
+
+**URL Format**: `https://en.wikipedia.org/wiki/{city}`
+
+**Sections Extracted**: Similar to Wikivoyage (Safety, Eat, Get Around, Weather)
+
+**Ingestion**: Fetched via Wikipedia API
+
+**Citation Format**: `https://en.wikipedia.org/wiki/{city}#{section}`
+
+### RAG Data Storage
+
+**Vector Database**: ChromaDB
+
+**Collection**: `travel_guides`
+
+**Embedding Model**: OpenAI `text-embedding-3-small` (1536 dimensions)
+
+**Metadata Schema**:
+```typescript
+{
+  city: string;           // City name
+  source: 'wikivoyage' | 'wikipedia';
+  section: string;        // Section name (Safety, Eat, etc.)
+  url: string;            // Source URL
+  chunkIndex: number;     // Index within section
+  totalChunks: number;    // Total chunks in section
+}
+```
+
+**Chunking Strategy**:
+- Chunk size: ~2000 characters (~500 tokens)
+- Overlap: 200 characters between chunks
+- Boundaries: Breaks at sentence/paragraph boundaries
+
+## 🧪 Running Evaluations
+
+The evaluation system automatically validates itineraries and responses for feasibility, grounding, and edit correctness.
+
+### Evaluation Types
+
+1. **Feasibility Evaluation**: Validates travel time, duration, and activity scheduling
+2. **Grounding Evaluation**: Ensures all facts have citations (RAG or OSM)
+3. **Edit Correctness Evaluation**: Verifies edits only changed targeted sections
+
+### Running Evaluations via API
+
+**Endpoint**: `POST /api/evaluations/run`
+
+**Request Body**:
+```json
+{
+  "evalType": "feasibility" | "grounding" | "edit_correctness",
+  "data": {
+    "itinerary": { ... },           // For feasibility/grounding
+    "originalItinerary": { ... },   // For edit_correctness
+    "editedItinerary": { ... }      // For edit_correctness
+  },
+  "context": {
+    "tripId": "uuid",
+    "itineraryId": "uuid"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "type": "feasibility",
+    "passed": true,
+    "score": 0.95,
+    "details": { ... }
+  }
+}
+```
+
+### Automatic Evaluations
+
+Evaluations run automatically when:
+- **Itinerary Generated**: Feasibility + Grounding evaluations
+- **Itinerary Edited**: Edit Correctness + Feasibility evaluations
+- **Response Generated**: Grounding evaluation (for explanations)
+
+### Viewing Evaluation Results
+
+**Endpoint**: `GET /api/evaluations/results?tripId={tripId}`
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "id": "uuid",
+      "type": "feasibility",
+      "passed": true,
+      "score": 0.95,
+      "details": { ... },
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Evaluation Storage
+
+All evaluation results are stored in the `eval_results` table in Supabase with:
+- Evaluation type
+- Pass/fail status
+- Score (0-1)
+- Detailed results (JSON)
+- Timestamp
+- Trip and itinerary IDs
+
+## 📝 Sample Test Transcripts
+
+### Test Case 1: Basic Trip Planning
+
+**User**: "I want to plan a 3-day trip to Mumbai starting next Monday."
+
+**Expected Flow**:
+1. System asks: "What are your main interests? (food, culture, history, nature, etc.)"
+2. User: "I love food and culture."
+3. System asks: "What pace do you prefer? (relaxed, moderate, or fast-paced)"
+4. User: "Moderate pace."
+5. System asks: "Any specific places or activities you'd like to include?"
+6. User: "No, you decide."
+7. System: "Does this sound right? Should I go ahead and create your itinerary?"
+8. User: "Yes, please generate it."
+9. System generates itinerary with 3 days, morning/afternoon/evening blocks
+
+### Test Case 2: Itinerary Edit
+
+**User**: "Reduce travel time for day 2 to 45 minutes."
+
+**Expected Flow**:
+1. System detects `EDIT_ITINERARY` intent with `reduce_travel` type
+2. System calls `itinerary_editor` tool with `targetTravelTime: 45`
+3. Tool removes activities from day 2 until travel time ≤ 45 minutes
+4. System returns updated itinerary
+5. Evaluation runs: Edit Correctness (verifies only day 2 changed)
+
+### Test Case 3: Explanation Request
+
+**User**: "Why did you pick City Palace?"
+
+**Expected Flow**:
+1. System detects `EXPLAIN` intent
+2. System retrieves RAG data for "City Palace" and "Jaipur"
+3. System extracts POI metadata from itinerary
+4. System composes explanation with citations:
+   - RAG citation: Wikivoyage URL
+   - OSM citation: OpenStreetMap URL
+5. System returns explanation with citations array
+
+### Test Case 4: PDF Email Request
+
+**User**: "Share the itinerary to me via email."
+
+**Expected Flow**:
+1. System detects `SEND_EMAIL` intent
+2. System asks: "What email address should I send it to?"
+3. User: "sarada.praneeth@gmail.com"
+4. System calls backend `/api/itinerary/send-pdf` endpoint
+5. Backend generates PDF using Puppeteer
+6. Backend sends PDF to n8n webhook (JSON with base64 PDF)
+7. n8n workflow sends email with PDF attachment
+8. System confirms: "Itinerary PDF sent successfully"
+
+### Test Case 5: Follow-up Questions (Max 5)
+
+**User**: "Plan a 2-day trip to Delhi."
+
+**Expected Flow**:
+1. System asks: "When would you like to start your trip?"
+2. User: "Next Friday."
+3. System asks: "What are your main interests?"
+4. User: "History and food."
+5. System asks: "What pace do you prefer?"
+6. User: "Relaxed."
+7. System asks: "Any dietary restrictions?"
+8. User: "Vegetarian."
+9. System asks: "Any specific places you'd like to visit?"
+10. User: "Red Fort and Jama Masjid."
+11. System: "Does this sound right? Should I go ahead and create your itinerary?"
+12. User: "Yes."
+13. System generates itinerary
+
+**Note**: After 5 questions, system auto-generates even if user hasn't confirmed.
+
+### Test Case 6: Empty POI Fallback
+
+**User**: "Plan a trip to a small city with no POIs."
+
+**Expected Flow**:
+1. POI search returns empty array (or fails)
+2. System sets `fallbackToLLMItinerary: true`
+3. System calls `itinerary_builder` with empty POIs array
+4. Tool generates LLM-based activities (2-4 per day)
+5. System returns complete itinerary (never empty)
+
+### Test Case 7: Day Swap
+
+**User**: "Swap day 1 and day 2."
+
+**Expected Flow**:
+1. System detects `EDIT_ITINERARY` intent with `swap` type
+2. System extracts `day: 1` and `swapDay: 2`
+3. System calls `itinerary_editor` tool
+4. Tool swaps days immutably (creates new array)
+5. Tool updates day numbers
+6. Tool recalculates totals
+7. System returns updated itinerary
 
 ---
 
