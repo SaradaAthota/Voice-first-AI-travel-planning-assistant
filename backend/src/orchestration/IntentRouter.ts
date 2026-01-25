@@ -26,7 +26,11 @@ export class IntentRouter {
     if (!config.openai?.apiKey) {
       throw new Error('OpenAI API key is required for IntentRouter');
     }
-    this.openai = new OpenAI({ apiKey: config.openai.apiKey });
+    this.openai = new OpenAI({ 
+      apiKey: config.openai.apiKey,
+      timeout: 20000, // 20 second timeout for intent classification
+      maxRetries: 1, // Limit retries to avoid long delays
+    });
   }
 
   /**

@@ -33,7 +33,11 @@ export class ResponseComposer {
     if (!config.openai?.apiKey) {
       throw new Error('OpenAI API key is required for ResponseComposer');
     }
-    this.openai = new OpenAI({ apiKey: config.openai.apiKey });
+    this.openai = new OpenAI({ 
+      apiKey: config.openai.apiKey,
+      timeout: 30000, // 30 second timeout for LLM calls
+      maxRetries: 1, // Limit retries to avoid long delays
+    });
   }
 
   /**
@@ -78,17 +82,24 @@ export class ResponseComposer {
     }
 
     // Retrieve RAG data for city guidance (safety, etiquette, areas to visit)
+    // Add timeout to prevent blocking if ChromaDB is slow
     let ragData: { content: string; citations: Citation[] } | null = null;
     if (context.preferences.city) {
       try {
-        // Retrieve RAG data for practical city guidance
-        const ragResult = await retrieveRAGData(
+        // Add timeout wrapper for RAG retrieval (5 seconds max)
+        const ragPromise = retrieveRAGData(
           `Practical travel information for ${context.preferences.city} including safety, etiquette, areas to visit, and local tips`,
           context.preferences.city,
           undefined // No specific section - get general city guidance
         );
-
-        if (ragResult.hasData && ragResult.chunks.length > 0) {
+        
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), 5000); // 5 second timeout
+        });
+        
+        const ragResult = await Promise.race([ragPromise, timeoutPromise]);
+        
+        if (ragResult && ragResult.hasData && ragResult.chunks.length > 0) {
           ragData = {
             content: ragResult.chunks.map(c => c.text).join('\n\n'),
             citations: ragResult.citations || [],
@@ -97,6 +108,8 @@ export class ResponseComposer {
           if (ragData.citations.length > 0) {
             citations.push(...ragData.citations);
           }
+        } else if (!ragResult) {
+          console.warn('RAG data retrieval timed out after 5 seconds (continuing without RAG)');
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

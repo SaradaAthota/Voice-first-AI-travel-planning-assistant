@@ -36,7 +36,11 @@ export class ItineraryBuilderTool implements MCPTool {
 
   constructor() {
     if (config.openai?.apiKey) {
-      this.openai = new OpenAI({ apiKey: config.openai.apiKey });
+      this.openai = new OpenAI({ 
+        apiKey: config.openai.apiKey,
+        timeout: 25000, // 25 second timeout for LLM activity generation
+        maxRetries: 1, // Limit retries to avoid long delays
+      });
     }
   }
 
@@ -552,7 +556,8 @@ Requirements:
 - Each day should have activities in at least 2 time blocks
 - Duration in minutes (60-180 typical)`;
 
-        const response = await this.openai.chat.completions.create({
+        // Add timeout wrapper for LLM call (15 seconds max per day)
+        const llmPromise = this.openai!.chat.completions.create({
           model: 'gpt-4-turbo-preview',
           messages: [
             { role: 'system', content: systemPrompt },
@@ -561,6 +566,20 @@ Requirements:
           temperature: 0.7,
           response_format: { type: 'json_object' },
         });
+        
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), 15000); // 15 second timeout per day
+        });
+        
+        const response = await Promise.race([llmPromise, timeoutPromise]) as Awaited<typeof llmPromise> | null;
+        
+        if (!response || !response.choices || !response.choices[0]) {
+          console.warn(`LLM activity generation timed out or failed for Day ${dayNum} - using fallback`);
+          // Use minimal fallback for this day
+          const fallbackPOIs = this.generateMinimalFallbackActivities(1, city);
+          poisPerDay.push(fallbackPOIs[0] || []);
+          continue;
+        }
 
         const content = response.choices[0]?.message?.content;
         if (content) {

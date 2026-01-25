@@ -180,6 +180,7 @@ export class Orchestrator {
    * This is the MAIN method called by the API endpoint.
    */
   async process(input: OrchestratorInput): Promise<OrchestratorOutput> {
+    const startTime = Date.now();
     console.log('=== ORCHESTRATOR PROCESS START ===');
     console.log('Input:', input);
     
@@ -969,6 +970,14 @@ export class Orchestrator {
           to: orchestrationResult.nextState,
         }
       : undefined;
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.log(`=== ORCHESTRATOR PROCESS END === (${duration}ms)`);
+    
+    if (duration > 10000) {
+      console.warn(`⚠️ SLOW PROCESSING: Orchestrator took ${duration}ms (>10s threshold)`);
+    }
 
     return {
       response,
